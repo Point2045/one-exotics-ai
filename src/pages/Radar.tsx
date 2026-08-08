@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Search,
   ShieldAlert,
+  SlidersHorizontal,
   Sparkles,
   TrendingUp,
   X,
@@ -35,6 +36,51 @@ const actionFilters: Array<{ value: ActionFilter; label: string }> = [
   { value: 'negotiate', label: 'Negotiate' },
   { value: 'pass', label: 'Pass' },
 ]
+
+const domPresets = [
+  { value: 'any', label: 'Any DOM', min: undefined, max: undefined },
+  { value: 'fresh', label: 'Fresh · <14d', min: undefined, max: 14 },
+  { value: 'mid', label: '14–45d', min: 14, max: 45 },
+  { value: 'stale', label: 'Stale · 45d+', min: 45, max: undefined },
+] as const
+type DomPreset = (typeof domPresets)[number]['value']
+
+function FilterNumberInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  placeholder: string
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-xs text-slate-500">{label}</span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value.replace(/[^0-9]/g, ''))}
+        inputMode="numeric"
+        placeholder={placeholder}
+        className="h-10 w-full rounded-xl border border-white/[0.08] bg-black/25 px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-[#d7b56d]/50"
+      />
+    </label>
+  )
+}
+
+function ToggleChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-full border px-3.5 py-1.5 text-xs transition ${active ? 'border-[#d7b56d]/50 bg-[#d7b56d]/12 text-[#f0d692]' : 'border-white/[0.08] bg-white/[0.03] text-slate-400 hover:text-white'}`}
+    >
+      {children}
+    </button>
+  )
+}
 
 function money(value?: number | null) {
   if (value == null) return '—'
@@ -514,17 +560,60 @@ function RadarBody() {
   const [action, setAction] = useState<ActionFilter>('all')
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [showFilters, setShowFilters] = useState(false)
+  const [dom, setDom] = useState<DomPreset>('any')
+  const [minPrice, setMinPrice] = useState('')
+  const [maxPrice, setMaxPrice] = useState('')
+  const [maxMileage, setMaxMileage] = useState('')
+  const [minYear, setMinYear] = useState('')
+  const [cpoOnly, setCpoOnly] = useState(false)
+  const [accidentFreeOnly, setAccidentFreeOnly] = useState(false)
+  const [singleOwnerOnly, setSingleOwnerOnly] = useState(false)
+  const [excludeRentalFleet, setExcludeRentalFleet] = useState(false)
   const utils = trpc.useUtils()
 
-  const filters = useMemo(
-    () => ({
+  const activeFilterCount =
+    (dom !== 'any' ? 1 : 0) +
+    (minPrice ? 1 : 0) +
+    (maxPrice ? 1 : 0) +
+    (maxMileage ? 1 : 0) +
+    (minYear ? 1 : 0) +
+    (cpoOnly ? 1 : 0) +
+    (accidentFreeOnly ? 1 : 0) +
+    (singleOwnerOnly ? 1 : 0) +
+    (excludeRentalFleet ? 1 : 0)
+
+  const clearAttributeFilters = () => {
+    setDom('any')
+    setMinPrice('')
+    setMaxPrice('')
+    setMaxMileage('')
+    setMinYear('')
+    setCpoOnly(false)
+    setAccidentFreeOnly(false)
+    setSingleOwnerOnly(false)
+    setExcludeRentalFleet(false)
+  }
+
+  const filters = useMemo(() => {
+    const domRange = domPresets.find((preset) => preset.value === dom) ?? domPresets[0]
+    return {
       make: make === 'All' ? undefined : make,
       action: action === 'all' ? undefined : action,
       query: query.trim() || undefined,
       limit: 60,
-    }),
-    [action, make, query],
-  )
+      minDaysOnMarket: domRange.min,
+      maxDaysOnMarket: domRange.max,
+      minPrice: minPrice ? Number(minPrice) : undefined,
+      maxPrice: maxPrice ? Number(maxPrice) : undefined,
+      maxMileage: maxMileage ? Number(maxMileage) : undefined,
+      minYear: minYear ? Number(minYear) : undefined,
+      cpoOnly: cpoOnly || undefined,
+      accidentFreeOnly: accidentFreeOnly || undefined,
+      singleOwnerOnly: singleOwnerOnly || undefined,
+      excludeRentalFleet: excludeRentalFleet || undefined,
+    }
+  }, [action, cpoOnly, accidentFreeOnly, singleOwnerOnly, excludeRentalFleet, dom, make, maxMileage, maxPrice, minPrice, minYear, query])
   const deals = trpc.highline.deals.useQuery(filters, { refetchInterval: 60_000 })
   const refresh = trpc.highline.refresh.useMutation({
     onSuccess: () => {
@@ -596,7 +685,7 @@ function RadarBody() {
                 />
               </label>
             </div>
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap items-center gap-2">
               {actionFilters.map((item) => (
                 <button
                   key={item.value}
@@ -607,7 +696,50 @@ function RadarBody() {
                   {item.label}
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => setShowFilters((value) => !value)}
+                className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm transition ${showFilters || activeFilterCount > 0 ? 'border-[#d7b56d]/50 bg-[#d7b56d]/12 text-[#f0d692]' : 'border-white/[0.08] bg-white/[0.03] text-slate-400 hover:text-white'}`}
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                Filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''}
+              </button>
             </div>
+
+            {showFilters && (
+              <div className="mt-5 space-y-5 border-t border-white/[0.06] pt-5">
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Days on market</p>
+                  <div className="flex flex-wrap gap-2">
+                    {domPresets.map((preset) => (
+                      <ToggleChip key={preset.value} active={dom === preset.value} onClick={() => setDom(preset.value)}>
+                        {preset.label}
+                      </ToggleChip>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <FilterNumberInput label="Min price ($)" value={minPrice} onChange={setMinPrice} placeholder="150000" />
+                  <FilterNumberInput label="Max price ($)" value={maxPrice} onChange={setMaxPrice} placeholder="450000" />
+                  <FilterNumberInput label="Max miles" value={maxMileage} onChange={setMaxMileage} placeholder="12000" />
+                  <FilterNumberInput label="Min year" value={minYear} onChange={setMinYear} placeholder="2019" />
+                </div>
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Provenance</p>
+                  <div className="flex flex-wrap gap-2">
+                    <ToggleChip active={cpoOnly} onClick={() => setCpoOnly((value) => !value)}>CPO only</ToggleChip>
+                    <ToggleChip active={accidentFreeOnly} onClick={() => setAccidentFreeOnly((value) => !value)}>No accidents</ToggleChip>
+                    <ToggleChip active={singleOwnerOnly} onClick={() => setSingleOwnerOnly((value) => !value)}>One owner</ToggleChip>
+                    <ToggleChip active={excludeRentalFleet} onClick={() => setExcludeRentalFleet((value) => !value)}>No rental/fleet</ToggleChip>
+                  </div>
+                </div>
+                {activeFilterCount > 0 && (
+                  <button type="button" onClick={clearAttributeFilters} className="text-xs text-slate-500 underline decoration-slate-700 underline-offset-4 transition hover:text-white">
+                    Clear all attribute filters
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="mt-5 space-y-4">

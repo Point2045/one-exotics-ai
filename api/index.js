@@ -48240,6 +48240,7 @@ async function latestIngestionRun(provider = "auto.dev") {
 
 // api/queries/highline.ts
 var actionPriority = { pursue: 0, inspect: 1, negotiate: 2, pass: 3 };
+var COMMERCIAL_USAGE = /* @__PURE__ */ new Set(["rental", "fleet", "commercial", "lease", "taxi", "government", "police"]);
 function numeric(value) {
   return value ? Number(value) : void 0;
 }
@@ -48300,11 +48301,19 @@ async function dealRadar(filters) {
   }
   const modelsById = new Map(modelRows.map((model) => [model.id, model]));
   const query = filters.query?.trim().toLowerCase();
+  const now = Date.now();
   return activeRows.map((listing) => ({
     listing,
     valuation: latestValuationByListing.get(listing.id) ?? null,
     supportedModel: listing.modelId ? modelsById.get(listing.modelId) ?? null : null
   })).filter((row) => row.valuation).filter((row) => !filters.make || row.listing.make.toLowerCase() === filters.make.toLowerCase()).filter((row) => !filters.action || row.valuation?.action === filters.action).filter((row) => {
+    if (filters.minDaysOnMarket == null && filters.maxDaysOnMarket == null) return true;
+    if (!row.listing.listedAt) return false;
+    const days = (now - row.listing.listedAt.getTime()) / 864e5;
+    if (filters.minDaysOnMarket != null && days < filters.minDaysOnMarket) return false;
+    if (filters.maxDaysOnMarket != null && days > filters.maxDaysOnMarket) return false;
+    return true;
+  }).filter((row) => filters.minPrice == null || (row.listing.price ?? 0) >= filters.minPrice).filter((row) => filters.maxPrice == null || (row.listing.price ?? Infinity) <= filters.maxPrice).filter((row) => filters.maxMileage == null || (row.listing.mileage ?? Infinity) <= filters.maxMileage).filter((row) => filters.minYear == null || (row.listing.year ?? 0) >= filters.minYear).filter((row) => filters.maxYear == null || (row.listing.year ?? Infinity) <= filters.maxYear).filter((row) => !filters.cpoOnly || row.listing.cpo === true).filter((row) => !filters.accidentFreeOnly || row.listing.accidentCount === 0).filter((row) => !filters.singleOwnerOnly || row.listing.ownerCount === 1).filter((row) => !filters.excludeRentalFleet || !row.listing.usageType || !COMMERCIAL_USAGE.has(row.listing.usageType.toLowerCase())).filter((row) => !filters.state || row.listing.state?.toLowerCase() === filters.state.toLowerCase()).filter((row) => {
     if (!query) return true;
     const haystack = `${row.listing.title} ${row.listing.make} ${row.listing.model} ${row.listing.trim ?? ""} ${row.supportedModel?.variant ?? ""}`.toLowerCase();
     return haystack.includes(query);
@@ -48869,7 +48878,19 @@ var highlineRouter = createRouter({
       make: external_exports.string().max(80).optional(),
       action: actionSchema.optional(),
       query: external_exports.string().max(120).optional(),
-      limit: external_exports.number().int().min(1).max(100).optional()
+      limit: external_exports.number().int().min(1).max(100).optional(),
+      minDaysOnMarket: external_exports.number().min(0).max(2e3).optional(),
+      maxDaysOnMarket: external_exports.number().min(0).max(2e3).optional(),
+      minPrice: external_exports.number().int().min(0).optional(),
+      maxPrice: external_exports.number().int().min(0).optional(),
+      maxMileage: external_exports.number().int().min(0).optional(),
+      minYear: external_exports.number().int().min(1950).max(2100).optional(),
+      maxYear: external_exports.number().int().min(1950).max(2100).optional(),
+      cpoOnly: external_exports.boolean().optional(),
+      accidentFreeOnly: external_exports.boolean().optional(),
+      singleOwnerOnly: external_exports.boolean().optional(),
+      excludeRentalFleet: external_exports.boolean().optional(),
+      state: external_exports.string().max(40).optional()
     }).optional()
   ).query(async ({ input }) => {
     await ensureHighlineReady();

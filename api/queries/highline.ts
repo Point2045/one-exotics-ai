@@ -9,7 +9,22 @@ type DealFilters = {
   action?: "pursue" | "inspect" | "negotiate" | "pass";
   query?: string;
   limit?: number;
+  minDaysOnMarket?: number;
+  maxDaysOnMarket?: number;
+  minPrice?: number;
+  maxPrice?: number;
+  maxMileage?: number;
+  minYear?: number;
+  maxYear?: number;
+  cpoOnly?: boolean;
+  accidentFreeOnly?: boolean;
+  singleOwnerOnly?: boolean;
+  excludeRentalFleet?: boolean;
+  state?: string;
 };
+
+/** Rental/fleet/commercial usage histories cap resale and warranty options. */
+const COMMERCIAL_USAGE = new Set(["rental", "fleet", "commercial", "lease", "taxi", "government", "police"]);
 
 function numeric(value: string | null) {
   return value ? Number(value) : undefined;
@@ -77,6 +92,7 @@ export async function dealRadar(filters: DealFilters) {
   }
   const modelsById = new Map(modelRows.map((model) => [model.id, model]));
   const query = filters.query?.trim().toLowerCase();
+  const now = Date.now();
 
   return activeRows
     .map((listing) => ({
@@ -87,6 +103,25 @@ export async function dealRadar(filters: DealFilters) {
     .filter((row) => row.valuation)
     .filter((row) => !filters.make || row.listing.make.toLowerCase() === filters.make.toLowerCase())
     .filter((row) => !filters.action || row.valuation?.action === filters.action)
+    .filter((row) => {
+      if (filters.minDaysOnMarket == null && filters.maxDaysOnMarket == null) return true;
+      // DOM needs a listed date — rows without one can't satisfy a DOM filter.
+      if (!row.listing.listedAt) return false;
+      const days = (now - row.listing.listedAt.getTime()) / 86_400_000;
+      if (filters.minDaysOnMarket != null && days < filters.minDaysOnMarket) return false;
+      if (filters.maxDaysOnMarket != null && days > filters.maxDaysOnMarket) return false;
+      return true;
+    })
+    .filter((row) => filters.minPrice == null || (row.listing.price ?? 0) >= filters.minPrice)
+    .filter((row) => filters.maxPrice == null || (row.listing.price ?? Infinity) <= filters.maxPrice)
+    .filter((row) => filters.maxMileage == null || (row.listing.mileage ?? Infinity) <= filters.maxMileage)
+    .filter((row) => filters.minYear == null || (row.listing.year ?? 0) >= filters.minYear)
+    .filter((row) => filters.maxYear == null || (row.listing.year ?? Infinity) <= filters.maxYear)
+    .filter((row) => !filters.cpoOnly || row.listing.cpo === true)
+    .filter((row) => !filters.accidentFreeOnly || row.listing.accidentCount === 0)
+    .filter((row) => !filters.singleOwnerOnly || row.listing.ownerCount === 1)
+    .filter((row) => !filters.excludeRentalFleet || !row.listing.usageType || !COMMERCIAL_USAGE.has(row.listing.usageType.toLowerCase()))
+    .filter((row) => !filters.state || row.listing.state?.toLowerCase() === filters.state.toLowerCase())
     .filter((row) => {
       if (!query) return true;
       const haystack = `${row.listing.title} ${row.listing.make} ${row.listing.model} ${row.listing.trim ?? ""} ${row.supportedModel?.variant ?? ""}`.toLowerCase();

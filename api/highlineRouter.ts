@@ -26,6 +26,18 @@ export const highlineRouter = createRouter({
           action: actionSchema.optional(),
           query: z.string().max(120).optional(),
           limit: z.number().int().min(1).max(100).optional(),
+          minDaysOnMarket: z.number().min(0).max(2000).optional(),
+          maxDaysOnMarket: z.number().min(0).max(2000).optional(),
+          minPrice: z.number().int().min(0).optional(),
+          maxPrice: z.number().int().min(0).optional(),
+          maxMileage: z.number().int().min(0).optional(),
+          minYear: z.number().int().min(1950).max(2100).optional(),
+          maxYear: z.number().int().min(1950).max(2100).optional(),
+          cpoOnly: z.boolean().optional(),
+          accidentFreeOnly: z.boolean().optional(),
+          singleOwnerOnly: z.boolean().optional(),
+          excludeRentalFleet: z.boolean().optional(),
+          state: z.string().max(40).optional(),
         })
         .optional(),
     )

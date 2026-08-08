@@ -1,9 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm run build && npx esbuild api/vercel-fn.ts --platform=node --bundle --format=esm --outfile=api/index.mjs --banner:js=\"import { createRequire } from 'module';const require = createRequire(import.meta.url);\"",
+  "buildCommand": "npm run build && npx esbuild api/vercel-fn.ts --platform=node --bundle --format=esm --outfile=api/index.js --banner:js=\"import { createRequire } from 'module';const require = createRequire(import.meta.url);\"",
   "outputDirectory": "dist/public",
   "functions": {
-    "api/index.mjs": {
+    "api/index.js": {
       "maxDuration": 300
     }
   },

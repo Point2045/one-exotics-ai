@@ -40,5 +40,3 @@ build/
 coverage/
 .nyc_output/
 
-# Vercel function bundle (generated on Vercel by buildCommand)
-api/index.mjs

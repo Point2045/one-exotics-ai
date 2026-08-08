@@ -3,9 +3,11 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist/public",
   "functions": {
-    "server.ts": {
-      "maxDuration": 300,
-      "includeFiles": "dist/public/index.html"
+    "api/[...slug].ts": {
+      "maxDuration": 300
     }
-  }
+  },
+  "rewrites": [
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
 }

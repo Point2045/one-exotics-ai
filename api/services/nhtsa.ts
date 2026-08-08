@@ -44,3 +44,52 @@ export async function decodeVinWithNhtsa(vin: string) {
     source: "NHTSA vPIC",
   };
 }
+
+export type RecallInfo = {
+  campaignNumber?: string;
+  component?: string;
+  summary?: string;
+  consequence?: string;
+  remedy?: string;
+  date?: string;
+  parkIt: boolean;
+};
+
+/** Open safety recalls — free NHTSA API, no key. Tolerant by design: failure yields an empty list. */
+export async function fetchRecallsByVehicle(make: string, model: string, year: string): Promise<RecallInfo[]> {
+  const url = `https://api.nhtsa.gov/recalls/recallsByVehicle?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}&modelYear=${encodeURIComponent(year)}`;
+  const response = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12_000) });
+  if (!response.ok) throw new Error(`NHTSA recalls failed with HTTP ${response.status}`);
+  const payload = (await response.json()) as { results?: Record<string, unknown>[] };
+  return (payload.results ?? []).slice(0, 10).map((row) => ({
+    campaignNumber: clean(row.NHTSACampaignNumber as string | undefined),
+    component: clean(row.Component as string | undefined),
+    summary: clean(row.Summary as string | undefined),
+    consequence: clean(row.Conequence as string | undefined) ?? clean(row.Consequence as string | undefined),
+    remedy: clean(row.Remedy as string | undefined),
+    date: clean(row.ReportReceivedDate as string | undefined),
+    parkIt: row.parkIt === true,
+  }));
+}
+
+export type ComplaintDigest = {
+  count: number;
+  samples: { components?: string; summary?: string; date?: string }[];
+};
+
+/** Owner-filed complaints — free NHTSA API. Recurring components are reliability red flags. */
+export async function fetchComplaintsByVehicle(make: string, model: string, year: string): Promise<ComplaintDigest> {
+  const url = `https://api.nhtsa.gov/complaints/complaintsByVehicle?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}&modelYear=${encodeURIComponent(year)}`;
+  const response = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12_000) });
+  if (!response.ok) throw new Error(`NHTSA complaints failed with HTTP ${response.status}`);
+  const payload = (await response.json()) as { count?: number; Count?: number; results?: Record<string, unknown>[] };
+  const rows = payload.results ?? [];
+  return {
+    count: payload.count ?? payload.Count ?? rows.length,
+    samples: rows.slice(0, 3).map((row) => ({
+      components: clean(row.components as string | undefined),
+      summary: clean(row.summary as string | undefined),
+      date: clean(row.dateOfIncident as string | undefined),
+    })),
+  };
+}

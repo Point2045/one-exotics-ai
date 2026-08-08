@@ -3,7 +3,7 @@ import { createRouter, publicQuery } from "./middleware";
 import { dashboardSummary, dealRadar, listingDetail, listSupportedModels, marketStats } from "./queries/highline";
 import { ensureHighlineReady } from "./services/bootstrap";
 import { latestIngestionRun, refreshListingsFromAutoDev } from "./services/ingestion";
-import { decodeVinWithNhtsa } from "./services/nhtsa";
+import { buildVinReport } from "./services/vinIntel";
 
 const actionSchema = z.enum(["pursue", "inspect", "negotiate", "pass"]);
 
@@ -63,5 +63,5 @@ export const highlineRouter = createRouter({
     return refreshListingsFromAutoDev();
   }),
 
-  decodeVin: publicQuery.input(z.object({ vin: z.string().min(17).max(17) })).query(({ input }) => decodeVinWithNhtsa(input.vin)),
+  decodeVin: publicQuery.input(z.object({ vin: z.string().min(17).max(17) })).query(({ input }) => buildVinReport(input.vin)),
 });

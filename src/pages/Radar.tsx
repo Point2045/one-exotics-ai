@@ -213,8 +213,8 @@ function VinDecoder() {
           <Gauge className="h-5 w-5" />
         </span>
         <div>
-          <h2 className="text-xl font-semibold text-white">Free VIN decode</h2>
-          <p className="text-sm text-slate-500">Powered by NHTSA vPIC.</p>
+          <h2 className="text-xl font-semibold text-white">VIN intelligence report</h2>
+          <p className="text-sm text-slate-500">Auto.dev decode + NHTSA vPIC, recalls & owner complaints.</p>
         </div>
       </div>
       <div className="mt-5 flex gap-3">
@@ -231,24 +231,88 @@ function VinDecoder() {
       </div>
       {decoded.isFetching && <p className="mt-4 text-sm text-slate-400">Decoding…</p>}
       {decoded.error && <p className="mt-4 text-sm text-rose-300">{decoded.error.message}</p>}
-      {decoded.data && (
-        <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
-          {[
-            ['Vehicle', `${decoded.data.year ?? ''} ${decoded.data.make ?? ''} ${decoded.data.model ?? ''}`],
-            ['Trim', decoded.data.trim],
-            ['Body', decoded.data.bodyClass],
-            ['Drive', decoded.data.driveType],
-            ['Engine', decoded.data.engineCylinders ? `${decoded.data.engineCylinders} cyl` : undefined],
-            ['Fuel', decoded.data.fuelType],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-2xl bg-white/[0.04] p-3">
-              <p className="text-xs text-slate-500">{label}</p>
-              <p className="mt-1 font-medium text-white">{value || '—'}</p>
+      {decoded.data && <VinReportCard report={decoded.data} />}
+    </section>
+  )
+}
+
+type VinReport = RouterOutputs['highline']['decodeVin']
+
+function VinReportCard({ report }: { report: VinReport }) {
+  return (
+    <div className="mt-5 space-y-4">
+      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+        {report.checksum === true && (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1 text-emerald-300">
+            <Check className="h-3 w-3" /> Checksum valid
+          </span>
+        )}
+        {report.checksum === false && (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-400/25 bg-rose-400/10 px-2.5 py-1 text-rose-300">
+            <ShieldAlert className="h-3 w-3" /> Fails checksum — possible typo or cloned VIN
+          </span>
+        )}
+        {report.origin && <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-slate-300">{report.origin}</span>}
+        {report.recalls.length > 0 ? (
+          <span className="rounded-full border border-amber-300/25 bg-amber-300/10 px-2.5 py-1 text-amber-200">
+            {report.recalls.length} open recall{report.recalls.length > 1 ? 's' : ''}
+          </span>
+        ) : (
+          <span className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1 text-emerald-300">No open recalls</span>
+        )}
+        <span className={`rounded-full border px-2.5 py-1 ${report.complaints.count > 10 ? 'border-amber-300/25 bg-amber-300/10 text-amber-200' : 'border-white/[0.08] bg-white/[0.04] text-slate-300'}`}>
+          {report.complaints.count} owner complaint{report.complaints.count === 1 ? '' : 's'}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        {[
+          ['Vehicle', `${report.year ?? ''} ${report.make ?? ''} ${report.model ?? ''}`],
+          ['Trim', report.trim],
+          ['Body', report.bodyClass],
+          ['Drive', report.driveType],
+          ['Engine', report.engine ?? (report.engineCylinders ? `${report.engineCylinders} cyl` : undefined)],
+          ['Transmission', report.transmission],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-2xl bg-white/[0.04] p-3">
+            <p className="text-xs text-slate-500">{label}</p>
+            <p className="mt-1 font-medium text-white">{value || '—'}</p>
+          </div>
+        ))}
+      </div>
+
+      {report.recalls.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-200">Open recalls</p>
+          {report.recalls.slice(0, 4).map((recall) => (
+            <div key={recall.campaignNumber ?? recall.component} className="rounded-2xl border border-amber-300/15 bg-amber-300/[0.05] p-3 text-sm">
+              <p className="font-medium text-amber-100">{recall.component ?? 'Component unknown'}</p>
+              <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-400">{recall.summary}</p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                {[recall.campaignNumber, recall.date, recall.parkIt ? 'Park it — do not drive' : null].filter(Boolean).join(' · ')}
+              </p>
             </div>
           ))}
         </div>
       )}
-    </section>
+
+      {report.complaints.samples.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Complaint themes</p>
+          {report.complaints.samples.map((complaint, index) => (
+            <div key={index} className="rounded-2xl bg-white/[0.035] p-3 text-sm">
+              <p className="text-xs font-medium text-slate-300">{complaint.components ?? 'General'}</p>
+              <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{complaint.summary}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <p className="text-[11px] leading-5 text-slate-600">
+        Sources: {report.sources.join(' · ') || 'none'}
+        {report.errors.length > 0 ? ` — degraded: ${report.errors[0]}` : ''}
+      </p>
+    </div>
   )
 }
 

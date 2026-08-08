@@ -40785,6 +40785,34 @@ async function fetchSearchPage(apiKey, search, page) {
 function autoDevConfigured() {
   return Boolean(process.env.AUTO_DEV_API_KEY?.trim());
 }
+async function decodeVinWithAutoDev(vin) {
+  const apiKey = process.env.AUTO_DEV_API_KEY?.trim();
+  if (!apiKey) throw new Error("AUTO_DEV_API_KEY is not configured on the server.");
+  const response = await fetch(`https://api.auto.dev/vin/${encodeURIComponent(vin)}`, {
+    headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+    signal: AbortSignal.timeout(12e3)
+  });
+  if (!response.ok) throw new Error(`Auto.dev VIN decode failed with HTTP ${response.status}`);
+  const payload = await response.json();
+  const text2 = (key) => {
+    const value = payload[key];
+    return typeof value === "string" && value.trim() ? value.trim() : void 0;
+  };
+  return {
+    vin,
+    valid: payload.vinValid !== false,
+    checksum: payload.checksum === true,
+    origin: text2("origin"),
+    year: payload.year != null ? String(payload.year) : void 0,
+    make: text2("make"),
+    model: text2("model"),
+    trim: text2("trim"),
+    bodyClass: text2("body"),
+    engine: text2("engine"),
+    driveType: text2("drive"),
+    transmission: text2("transmission")
+  };
+}
 async function fetchAutoDevListings() {
   const apiKey = process.env.AUTO_DEV_API_KEY?.trim();
   if (!apiKey) {
@@ -48604,6 +48632,107 @@ async function decodeVinWithNhtsa(vin) {
     source: "NHTSA vPIC"
   };
 }
+async function fetchRecallsByVehicle(make, model, year2) {
+  const url2 = `https://api.nhtsa.gov/recalls/recallsByVehicle?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}&modelYear=${encodeURIComponent(year2)}`;
+  const response = await fetch(url2, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12e3) });
+  if (!response.ok) throw new Error(`NHTSA recalls failed with HTTP ${response.status}`);
+  const payload = await response.json();
+  return (payload.results ?? []).slice(0, 10).map((row) => ({
+    campaignNumber: clean(row.NHTSACampaignNumber),
+    component: clean(row.Component),
+    summary: clean(row.Summary),
+    consequence: clean(row.Conequence) ?? clean(row.Consequence),
+    remedy: clean(row.Remedy),
+    date: clean(row.ReportReceivedDate),
+    parkIt: row.parkIt === true
+  }));
+}
+async function fetchComplaintsByVehicle(make, model, year2) {
+  const url2 = `https://api.nhtsa.gov/complaints/complaintsByVehicle?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}&modelYear=${encodeURIComponent(year2)}`;
+  const response = await fetch(url2, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12e3) });
+  if (!response.ok) throw new Error(`NHTSA complaints failed with HTTP ${response.status}`);
+  const payload = await response.json();
+  const rows = payload.results ?? [];
+  return {
+    count: payload.count ?? payload.Count ?? rows.length,
+    samples: rows.slice(0, 3).map((row) => ({
+      components: clean(row.components),
+      summary: clean(row.summary),
+      date: clean(row.dateOfIncident)
+    }))
+  };
+}
+
+// api/services/vinIntel.ts
+function pick2(...values) {
+  return values.find((value) => value && value.trim());
+}
+async function buildVinReport(vin) {
+  const normalizedVin = vin.trim().toUpperCase();
+  if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(normalizedVin)) {
+    throw new Error("VIN must be 17 characters and cannot contain I, O, or Q.");
+  }
+  const [autoDevResult, nhtsaResult] = await Promise.allSettled([
+    decodeVinWithAutoDev(normalizedVin),
+    decodeVinWithNhtsa(normalizedVin)
+  ]);
+  const autoDev = autoDevResult.status === "fulfilled" ? autoDevResult.value : void 0;
+  const nhtsa = nhtsaResult.status === "fulfilled" ? nhtsaResult.value : void 0;
+  const sources = [];
+  const errors = [];
+  if (autoDev) sources.push("Auto.dev VIN decode");
+  else errors.push(autoDevResult.status === "rejected" ? String(autoDevResult.reason?.message ?? autoDevResult.reason) : "Auto.dev unavailable");
+  if (nhtsa) sources.push("NHTSA vPIC");
+  else errors.push(nhtsaResult.status === "rejected" ? String(nhtsaResult.reason?.message ?? nhtsaResult.reason) : "NHTSA vPIC unavailable");
+  if (!autoDev && !nhtsa) {
+    throw new Error(`All VIN decoders failed \u2014 ${errors.join("; ")}`);
+  }
+  const year2 = pick2(nhtsa?.year, autoDev?.year);
+  const make = pick2(autoDev?.make, nhtsa?.make);
+  const model = pick2(autoDev?.model, nhtsa?.model);
+  let recalls = [];
+  let complaints = { count: 0, samples: [] };
+  if (make && model && year2) {
+    const [recallsResult, complaintsResult] = await Promise.allSettled([
+      fetchRecallsByVehicle(make, model, year2),
+      fetchComplaintsByVehicle(make, model, year2)
+    ]);
+    if (recallsResult.status === "fulfilled") {
+      recalls = recallsResult.value;
+      sources.push("NHTSA recalls");
+    } else {
+      errors.push(String(recallsResult.reason?.message ?? recallsResult.reason));
+    }
+    if (complaintsResult.status === "fulfilled") {
+      complaints = complaintsResult.value;
+      sources.push("NHTSA complaints");
+    } else {
+      errors.push(String(complaintsResult.reason?.message ?? complaintsResult.reason));
+    }
+  }
+  return {
+    vin: normalizedVin,
+    valid: autoDev?.valid ?? true,
+    checksum: autoDev?.checksum,
+    origin: autoDev?.origin ?? nhtsa?.plantCountry,
+    year: year2,
+    make,
+    model,
+    trim: pick2(autoDev?.trim, nhtsa?.trim),
+    bodyClass: pick2(nhtsa?.bodyClass, autoDev?.bodyClass),
+    driveType: pick2(autoDev?.driveType, nhtsa?.driveType),
+    transmission: pick2(autoDev?.transmission, nhtsa?.transmission),
+    engine: autoDev?.engine,
+    engineCylinders: nhtsa?.engineCylinders,
+    fuelType: nhtsa?.fuelType,
+    plantCountry: nhtsa?.plantCountry,
+    manufacturer: nhtsa?.manufacturer,
+    recalls,
+    complaints,
+    sources,
+    errors
+  };
+}
 
 // api/highlineRouter.ts
 var actionSchema = external_exports.enum(["pursue", "inspect", "negotiate", "pass"]);
@@ -48653,7 +48782,7 @@ var highlineRouter = createRouter({
     }
     return refreshListingsFromAutoDev();
   }),
-  decodeVin: publicQuery.input(external_exports.object({ vin: external_exports.string().min(17).max(17) })).query(({ input }) => decodeVinWithNhtsa(input.vin))
+  decodeVin: publicQuery.input(external_exports.object({ vin: external_exports.string().min(17).max(17) })).query(({ input }) => buildVinReport(input.vin))
 });
 
 // api/router.ts

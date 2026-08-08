@@ -174,6 +174,53 @@ export function autoDevConfigured() {
   return Boolean(process.env.AUTO_DEV_API_KEY?.trim());
 }
 
+export type AutoDevVinDecode = {
+  vin: string;
+  valid: boolean;
+  checksum: boolean;
+  origin?: string;
+  year?: string;
+  make?: string;
+  model?: string;
+  trim?: string;
+  bodyClass?: string;
+  engine?: string;
+  driveType?: string;
+  transmission?: string;
+};
+
+/** Auto.dev VIN decode — stronger than NHTSA vPIC on exotic trims and validates the check digit. */
+export async function decodeVinWithAutoDev(vin: string): Promise<AutoDevVinDecode> {
+  const apiKey = process.env.AUTO_DEV_API_KEY?.trim();
+  if (!apiKey) throw new Error("AUTO_DEV_API_KEY is not configured on the server.");
+
+  const response = await fetch(`https://api.auto.dev/vin/${encodeURIComponent(vin)}`, {
+    headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (!response.ok) throw new Error(`Auto.dev VIN decode failed with HTTP ${response.status}`);
+  const payload = (await response.json()) as Record<string, unknown>;
+
+  const text = (key: string) => {
+    const value = payload[key];
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  };
+  return {
+    vin,
+    valid: payload.vinValid !== false,
+    checksum: payload.checksum === true,
+    origin: text("origin"),
+    year: payload.year != null ? String(payload.year) : undefined,
+    make: text("make"),
+    model: text("model"),
+    trim: text("trim"),
+    bodyClass: text("body"),
+    engine: text("engine"),
+    driveType: text("drive"),
+    transmission: text("transmission"),
+  };
+}
+
 export async function fetchAutoDevListings(): Promise<ProviderFetchResult> {
   const apiKey = process.env.AUTO_DEV_API_KEY?.trim();
   if (!apiKey) {

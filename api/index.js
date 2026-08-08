@@ -47584,6 +47584,16 @@ function createDrizzleStore() {
       const [result] = await getDb().update(listings).set({ status: "unknown", removedAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(and(...conditions));
       return Number(result.affectedRows ?? 0);
     },
+    async recentlyDelisted(withinDays, limit = 5e3) {
+      const cutoff = new Date(Date.now() - withinDays * 864e5);
+      return getDb().select().from(listings).where(
+        and(
+          inArray(listings.status, ["unknown", "sold", "expired"]),
+          isNotNull(listings.removedAt),
+          gte(listings.removedAt, cutoff)
+        )
+      ).orderBy(desc(listings.removedAt), desc(listings.id)).limit(limit);
+    },
     async hasListingsBySource(source) {
       const rows = await getDb().select({ id: listings.id }).from(listings).where(eq(listings.source, source)).limit(1);
       return rows.length > 0;
@@ -47746,6 +47756,12 @@ function createMemoryStore(tables) {
         expired += 1;
       }
       return expired;
+    },
+    async recentlyDelisted(withinDays, limit = 5e3) {
+      const cutoff = Date.now() - withinDays * 864e5;
+      return tables.listings.filter(
+        (listing) => (listing.status === "unknown" || listing.status === "sold" || listing.status === "expired") && listing.removedAt != null && listing.removedAt.getTime() >= cutoff
+      ).sort((a, b) => b.removedAt.getTime() - a.removedAt.getTime() || b.id - a.id).slice(0, limit);
     },
     async hasListingsBySource(source) {
       return tables.listings.some((listing) => listing.source === source);
@@ -48310,10 +48326,12 @@ function percentileOf(values, fraction) {
 }
 async function marketStats() {
   const store = await getStore();
-  const [modelRows, activeRows, valuationRows] = await Promise.all([
+  const [modelRows, activeRows, valuationRows, delistedRows] = await Promise.all([
     store.allSupportedModels(),
     store.activeListings(5e3),
-    store.recentValuations(2e3)
+    store.recentValuations(2e3),
+    // 180-day window of "left the market" observations powers the sell-through stats.
+    store.recentlyDelisted(180, 5e3)
   ]);
   const activeIds = new Set(activeRows.map((listing) => listing.id));
   const latestValuationByListing = /* @__PURE__ */ new Map();
@@ -48342,6 +48360,20 @@ async function marketStats() {
         bestListingId = listing.id;
       }
     }
+    const gone = delistedRows.filter((listing) => listing.modelId === model.id);
+    const sellDurations = gone.map((listing) => {
+      const start = (listing.listedAt ?? listing.firstSeenAt)?.getTime();
+      const end = listing.removedAt?.getTime();
+      if (start == null || end == null) return null;
+      const days = Math.round((end - start) / 864e5);
+      return days >= 1 && days <= 365 ? days : null;
+    }).filter((days) => days != null).sort((a, b) => a - b);
+    const goneLast30d = gone.filter((listing) => now - listing.removedAt.getTime() <= 30 * 864e5).length;
+    const medianDaysToSell = sellDurations.length >= 2 ? percentileOf(sellDurations, 0.5) : null;
+    const demandSignal = medianDaysToSell == null ? null : medianDaysToSell <= 35 ? "fast" : medianDaysToSell <= 75 ? "balanced" : "slow";
+    const staleCount = medianDaysToSell == null ? null : rows.filter(
+      (listing) => listing.listedAt && (now - listing.listedAt.getTime()) / 864e5 > medianDaysToSell * 1.5
+    ).length;
     return {
       modelId: model.id,
       make: model.make,
@@ -48349,6 +48381,11 @@ async function marketStats() {
       variant: model.variant,
       generation: model.generation,
       activeCount: rows.length,
+      medianDaysToSell,
+      delistedObserved: sellDurations.length,
+      goneLast30d,
+      demandSignal,
+      staleCount,
       minAsk: prices[0],
       maxAsk: prices[prices.length - 1],
       medianAsk: percentileOf(prices, 0.5),
@@ -48439,7 +48476,13 @@ var demoSeeds = [
     mileageBase: 8200,
     city: "Miami",
     state: "FL",
-    imageUrl: PEXELS.showroom
+    imageUrl: PEXELS.showroom,
+    sellThrough: [
+      { daysToSell: 26, goneDaysAgo: 9 },
+      { daysToSell: 38, goneDaysAgo: 25 },
+      { daysToSell: 44, goneDaysAgo: 58 },
+      { daysToSell: 61, goneDaysAgo: 102 }
+    ]
   },
   {
     make: "Porsche",
@@ -48450,7 +48493,14 @@ var demoSeeds = [
     mileageBase: 6400,
     city: "Los Angeles",
     state: "CA",
-    imageUrl: PEXELS.showroom
+    imageUrl: PEXELS.showroom,
+    sellThrough: [
+      { daysToSell: 9, goneDaysAgo: 5 },
+      { daysToSell: 14, goneDaysAgo: 17 },
+      { daysToSell: 21, goneDaysAgo: 39 },
+      { daysToSell: 12, goneDaysAgo: 76 },
+      { daysToSell: 18, goneDaysAgo: 121 }
+    ]
   },
   {
     make: "Lamborghini",
@@ -48461,7 +48511,13 @@ var demoSeeds = [
     mileageBase: 11200,
     city: "Scottsdale",
     state: "AZ",
-    imageUrl: PEXELS.lineup
+    imageUrl: PEXELS.lineup,
+    sellThrough: [
+      { daysToSell: 27, goneDaysAgo: 8 },
+      { daysToSell: 35, goneDaysAgo: 29 },
+      { daysToSell: 44, goneDaysAgo: 63 },
+      { daysToSell: 52, goneDaysAgo: 97 }
+    ]
   },
   {
     make: "Mercedes-Benz",
@@ -48472,7 +48528,14 @@ var demoSeeds = [
     mileageBase: 15500,
     city: "Dallas",
     state: "TX",
-    imageUrl: PEXELS.lineup
+    imageUrl: PEXELS.lineup,
+    sellThrough: [
+      { daysToSell: 16, goneDaysAgo: 4 },
+      { daysToSell: 24, goneDaysAgo: 19 },
+      { daysToSell: 31, goneDaysAgo: 52 },
+      { daysToSell: 29, goneDaysAgo: 83 },
+      { daysToSell: 40, goneDaysAgo: 140 }
+    ]
   },
   {
     make: "Aston Martin",
@@ -48483,7 +48546,13 @@ var demoSeeds = [
     mileageBase: 17600,
     city: "Atlanta",
     state: "GA",
-    imageUrl: PEXELS.showroom
+    imageUrl: PEXELS.showroom,
+    sellThrough: [
+      { daysToSell: 66, goneDaysAgo: 12 },
+      { daysToSell: 95, goneDaysAgo: 41 },
+      { daysToSell: 128, goneDaysAgo: 74 },
+      { daysToSell: 88, goneDaysAgo: 130 }
+    ]
   },
   {
     make: "Lamborghini",
@@ -48494,7 +48563,13 @@ var demoSeeds = [
     mileageBase: 5900,
     city: "Greenwich",
     state: "CT",
-    imageUrl: PEXELS.aventador
+    imageUrl: PEXELS.aventador,
+    sellThrough: [
+      { daysToSell: 58, goneDaysAgo: 15 },
+      { daysToSell: 84, goneDaysAgo: 49 },
+      { daysToSell: 112, goneDaysAgo: 91 },
+      { daysToSell: 97, goneDaysAgo: 143 }
+    ]
   }
 ];
 function demoListing(seed, price, index2) {
@@ -48523,6 +48598,7 @@ function demoListing(seed, price, index2) {
     url: "https://example.com/demo-listing",
     imageUrl: seed.imageUrl,
     description: "Illustrative demo listing used until the live provider is configured.",
+    listedAt: new Date(Date.now() - (6 + index2 * 9) * 864e5),
     status: "active",
     raw: { demo: true }
   };
@@ -48539,6 +48615,49 @@ async function seedDemoData() {
       const model = matchSupportedModel(listing, models);
       await upsertListing(listing, model?.id);
       inserted += 1;
+    }
+  }
+  const DAY_MS = 864e5;
+  const now = Date.now();
+  for (const seed of demoSeeds) {
+    for (const [index2, observation] of seed.sellThrough.entries()) {
+      const removedAt = new Date(now - observation.goneDaysAgo * DAY_MS);
+      const listedAt = new Date(removedAt.getTime() - observation.daysToSell * DAY_MS);
+      const listing = demoListing(seed, seed.prices[(index2 + 1) % seed.prices.length], 30 + index2);
+      const model = matchSupportedModel(listing, models);
+      await store.insertListing({
+        source: "demo",
+        externalId: `${listing.externalId}-gone`,
+        modelId: model?.id ?? null,
+        vin: null,
+        year: listing.year,
+        make: listing.make,
+        model: listing.model,
+        trim: listing.trim,
+        title: listing.title,
+        price: listing.price,
+        mileage: listing.mileage,
+        exteriorColor: listing.exteriorColor,
+        interiorColor: listing.interiorColor,
+        transmission: listing.transmission,
+        drivetrain: listing.drivetrain,
+        bodyStyle: listing.bodyStyle,
+        sellerName: listing.sellerName,
+        sellerType: listing.sellerType,
+        city: listing.city,
+        state: listing.state,
+        url: listing.url,
+        imageUrl: listing.imageUrl,
+        description: "Demo sell-through observation: this listing left the market.",
+        listedAt,
+        status: "unknown",
+        firstSeenAt: listedAt,
+        lastSeenAt: removedAt,
+        removedAt,
+        createdAt: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date(),
+        raw: { demo: true, gone: true }
+      });
     }
   }
   await rebuildModelStats();

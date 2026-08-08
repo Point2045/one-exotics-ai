@@ -9,7 +9,7 @@ import '../App.css'
 type RouterOutputs = inferRouterOutputs<AppRouter>
 type Market = RouterOutputs['highline']['markets']['markets'][number]
 
-type SortKey = 'activeCount' | 'medianAsk' | 'medianMileage' | 'avgDaysOnMarket' | 'bestEdgePct'
+type SortKey = 'activeCount' | 'medianAsk' | 'medianMileage' | 'avgDaysOnMarket' | 'medianDaysToSell' | 'goneLast30d' | 'bestEdgePct'
 
 function money(value?: number | null) {
   if (value == null) return '—'
@@ -26,8 +26,33 @@ const columns: Array<{ key: SortKey; label: string }> = [
   { key: 'medianAsk', label: 'Median ask' },
   { key: 'medianMileage', label: 'Median miles' },
   { key: 'avgDaysOnMarket', label: 'Avg DOM' },
+  { key: 'medianDaysToSell', label: 'Days to sell' },
+  { key: 'goneLast30d', label: 'Gone ≤30d' },
   { key: 'bestEdgePct', label: 'Best net edge' },
 ]
+
+function DemandCell({ market }: { market: Market }) {
+  if (market.medianDaysToSell == null) {
+    return <span className="text-slate-500" title="Not enough sell-through history yet — builds with each refresh">collecting…</span>
+  }
+  const tone =
+    market.demandSignal === 'fast'
+      ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-300'
+      : market.demandSignal === 'balanced'
+        ? 'border-amber-300/25 bg-amber-300/10 text-amber-200'
+        : 'border-rose-400/25 bg-rose-400/10 text-rose-300'
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <span className="font-semibold text-white">{market.medianDaysToSell}d</span>
+        <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${tone}`}>{market.demandSignal}</span>
+      </div>
+      {market.staleCount != null && market.staleCount > 0 && (
+        <p className="mt-1 text-[11px] text-amber-200/80">{market.staleCount} stale now</p>
+      )}
+    </div>
+  )
+}
 
 function SignalChips({ market }: { market: Market }) {
   const { pursue, inspect, negotiate, pass } = market.actionCounts
@@ -177,6 +202,13 @@ function MarketsBody() {
                   )}
                 </td>
                 <td className="px-4 py-4">
+                  <DemandCell market={market} />
+                </td>
+                <td className="px-4 py-4 text-slate-300">
+                  {market.goneLast30d}
+                  <span className="ml-1.5 text-[11px] text-slate-500">of {market.delistedObserved} obs</span>
+                </td>
+                <td className="px-4 py-4">
                   {market.bestEdgePct == null ? (
                     <span className="text-slate-500">—</span>
                   ) : (
@@ -208,6 +240,9 @@ function MarketsBody() {
           <ShieldCheck className="mt-0.5 h-5 w-5 text-[#f0d692]" />
           <p className="max-w-2xl text-sm leading-6 text-slate-400">
             High days-on-market with flat ask spreads means sellers are anchoring — that's where negotiate signals concentrate. Tight spreads with low DOM mean efficient pricing; edge there is rare and usually provenance-driven.
+          </p>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">
+            <span className="text-slate-400">Days to sell</span> is the observed median time a variant's listings sat before leaving the feed — usually sold, occasionally withdrawn. "Gone ≤30d" counts recent exits; "stale now" flags live listings sitting past 1.5× the typical sell time. History builds with every refresh.
           </p>
         </div>
         <Link to="/radar" className="luxury-button shrink-0 px-5 py-3">

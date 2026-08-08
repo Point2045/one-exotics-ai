@@ -114,10 +114,12 @@ function percentileOf(values: number[], fraction: number) {
 
 export async function marketStats() {
   const store = await getStore();
-  const [modelRows, activeRows, valuationRows] = await Promise.all([
+  const [modelRows, activeRows, valuationRows, delistedRows] = await Promise.all([
     store.allSupportedModels(),
     store.activeListings(5000),
     store.recentValuations(2000),
+    // 180-day window of "left the market" observations powers the sell-through stats.
+    store.recentlyDelisted(180, 5000),
   ]);
 
   const activeIds = new Set(activeRows.map((listing) => listing.id));
@@ -155,6 +157,31 @@ export async function marketStats() {
         }
       }
 
+      // Sell-through: how long this cohort's listings actually sat before leaving the market.
+      // Delisted usually means sold, occasionally withdrawn — durations outside 1..365 days are discarded as noise.
+      const gone = delistedRows.filter((listing) => listing.modelId === model.id);
+      const sellDurations = gone
+        .map((listing) => {
+          const start = (listing.listedAt ?? listing.firstSeenAt)?.getTime();
+          const end = listing.removedAt?.getTime();
+          if (start == null || end == null) return null;
+          const days = Math.round((end - start) / 86_400_000);
+          return days >= 1 && days <= 365 ? days : null;
+        })
+        .filter((days): days is number => days != null)
+        .sort((a, b) => a - b);
+      const goneLast30d = gone.filter((listing) => now - listing.removedAt!.getTime() <= 30 * 86_400_000).length;
+      const medianDaysToSell = sellDurations.length >= 2 ? percentileOf(sellDurations, 0.5) : null;
+      const demandSignal =
+        medianDaysToSell == null ? null : medianDaysToSell <= 35 ? "fast" : medianDaysToSell <= 75 ? "balanced" : "slow";
+      // Active listings sitting well past the typical sell time are stale — prime negotiation targets.
+      const staleCount =
+        medianDaysToSell == null
+          ? null
+          : rows.filter(
+              (listing) => listing.listedAt && (now - listing.listedAt.getTime()) / 86_400_000 > medianDaysToSell * 1.5,
+            ).length;
+
       return {
         modelId: model.id,
         make: model.make,
@@ -162,6 +189,11 @@ export async function marketStats() {
         variant: model.variant,
         generation: model.generation,
         activeCount: rows.length,
+        medianDaysToSell,
+        delistedObserved: sellDurations.length,
+        goneLast30d,
+        demandSignal,
+        staleCount,
         minAsk: prices[0],
         maxAsk: prices[prices.length - 1],
         medianAsk: percentileOf(prices, 0.5),

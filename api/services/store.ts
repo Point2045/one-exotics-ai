@@ -1,4 +1,4 @@
-import { desc, eq, and, sql, notInArray } from "drizzle-orm";
+import { desc, eq, and, sql, notInArray, inArray, isNotNull, gte } from "drizzle-orm";
 import {
   ingestionRuns,
   listingPriceHistory,
@@ -57,6 +57,8 @@ export interface HighlineStore {
   expireListingsBySource(source: string): Promise<void>;
   /** Mark active listings absent from the provider's latest full result as unknown (likely sold). */
   expireUnseenListings(source: string, make: string, model: string | undefined, seenExternalIds: string[]): Promise<number>;
+  /** Listings that left the market within the last N days (likely sold, sometimes withdrawn), most recent first. */
+  recentlyDelisted(withinDays: number, limit?: number): Promise<Listing[]>;
   hasListingsBySource(source: string): Promise<boolean>;
 
   insertPriceHistory(values: PriceHistoryInsert): Promise<void>;
@@ -150,6 +152,22 @@ function createDrizzleStore(): HighlineStore {
         .set({ status: "unknown", removedAt: new Date(), updatedAt: new Date() })
         .where(and(...conditions));
       return Number((result as { affectedRows?: number }).affectedRows ?? 0);
+    },
+
+    async recentlyDelisted(withinDays, limit = 5000) {
+      const cutoff = new Date(Date.now() - withinDays * 86_400_000);
+      return getDb()
+        .select()
+        .from(listings)
+        .where(
+          and(
+            inArray(listings.status, ["unknown", "sold", "expired"]),
+            isNotNull(listings.removedAt),
+            gte(listings.removedAt, cutoff),
+          ),
+        )
+        .orderBy(desc(listings.removedAt), desc(listings.id))
+        .limit(limit);
     },
 
     async hasListingsBySource(source) {
@@ -362,6 +380,19 @@ function createMemoryStore(tables: MemoryTables): HighlineStore {
         expired += 1;
       }
       return expired;
+    },
+
+    async recentlyDelisted(withinDays, limit = 5000) {
+      const cutoff = Date.now() - withinDays * 86_400_000;
+      return tables.listings
+        .filter(
+          (listing) =>
+            (listing.status === "unknown" || listing.status === "sold" || listing.status === "expired") &&
+            listing.removedAt != null &&
+            listing.removedAt.getTime() >= cutoff,
+        )
+        .sort((a, b) => b.removedAt!.getTime() - a.removedAt!.getTime() || b.id - a.id)
+        .slice(0, limit);
     },
 
     async hasListingsBySource(source) {

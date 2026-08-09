@@ -257,6 +257,8 @@ export async function ingestMarketCheckSellThrough(): Promise<{
   const now = new Date();
 
   for (const { model, zip } of slice) {
+    // MarketCheck's free plan throttles bursts (~5 RPS) — pace the rotation.
+    if (result.calls > 0) await new Promise((resolve) => setTimeout(resolve, 350));
     const { observations, warning } = await fetchSellThroughRecents({
       make: model.searchMake,
       model: model.searchModel ?? undefined,

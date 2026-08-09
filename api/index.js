@@ -48646,6 +48646,7 @@ async function ingestMarketCheckSellThrough() {
   const result = { configured: true, calls: 0, inserted: 0, skippedExisting: 0, skippedStillActive: 0, warnings: [] };
   const now = /* @__PURE__ */ new Date();
   for (const { model, zip } of slice) {
+    if (result.calls > 0) await new Promise((resolve) => setTimeout(resolve, 350));
     const { observations, warning } = await fetchSellThroughRecents({
       make: model.searchMake,
       model: model.searchModel ?? void 0,

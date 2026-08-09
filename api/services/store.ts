@@ -50,6 +50,8 @@ export interface HighlineStore {
 
   findListing(source: string, externalId: string): Promise<Listing | undefined>;
   findListingById(id: number): Promise<Listing | undefined>;
+  /** Any active listing carrying this VIN — used to keep sell-through observations from double-counting cars still for sale. */
+  findActiveListingByVin(vin: string): Promise<Listing | undefined>;
   insertListing(values: InsertListing): Promise<number>;
   updateListing(id: number, values: Partial<InsertListing>): Promise<void>;
   activeListings(limit?: number): Promise<Listing[]>;
@@ -110,6 +112,10 @@ function createDrizzleStore(): HighlineStore {
 
     async findListingById(id) {
       return getDb().query.listings.findFirst({ where: eq(listings.id, id) });
+    },
+
+    async findActiveListingByVin(vin) {
+      return getDb().query.listings.findFirst({ where: and(eq(listings.vin, vin), eq(listings.status, "active")) });
     },
 
     async insertListing(values) {
@@ -295,6 +301,10 @@ function createMemoryStore(tables: MemoryTables): HighlineStore {
 
     async findListingById(id) {
       return tables.listings.find((listing) => listing.id === id);
+    },
+
+    async findActiveListingByVin(vin) {
+      return tables.listings.find((listing) => listing.vin === vin && listing.status === "active");
     },
 
     async insertListing(values) {

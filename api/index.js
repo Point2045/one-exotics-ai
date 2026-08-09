@@ -325,14 +325,14 @@ var init_dist = __esm({
         }
       }
       get headers() {
-        const cache = this[cacheKey];
-        if (cache) {
-          if (!(cache[2] instanceof Headers)) {
-            cache[2] = new Headers(
-              cache[2] || { "content-type": "text/plain; charset=UTF-8" }
+        const cache2 = this[cacheKey];
+        if (cache2) {
+          if (!(cache2[2] instanceof Headers)) {
+            cache2[2] = new Headers(
+              cache2[2] || { "content-type": "text/plain; charset=UTF-8" }
             );
           }
-          return cache[2];
+          return cache2[2];
         }
         return this[getResponseCache]().headers;
       }
@@ -7038,24 +7038,24 @@ var require_umd = __commonJS({
         var INT_CACHE = {};
         var UINT_CACHE = {};
         function fromInt(value, unsigned) {
-          var obj, cachedObj, cache;
+          var obj, cachedObj, cache2;
           if (unsigned) {
             value >>>= 0;
-            if (cache = 0 <= value && value < 256) {
+            if (cache2 = 0 <= value && value < 256) {
               cachedObj = UINT_CACHE[value];
               if (cachedObj) return cachedObj;
             }
             obj = fromBits(value, 0, true);
-            if (cache) UINT_CACHE[value] = obj;
+            if (cache2) UINT_CACHE[value] = obj;
             return obj;
           } else {
             value |= 0;
-            if (cache = -128 <= value && value < 128) {
+            if (cache2 = -128 <= value && value < 128) {
               cachedObj = INT_CACHE[value];
               if (cachedObj) return cachedObj;
             }
             obj = fromBits(value, value < 0 ? -1 : 0, false);
-            if (cache) INT_CACHE[value] = obj;
+            if (cache2) INT_CACHE[value] = obj;
             return obj;
           }
         }
@@ -16404,12 +16404,12 @@ var require_query2 = __commonJS({
         this._fields.push([]);
         return this.readField;
       }
-      _streamLocalInfile(connection, path4) {
+      _streamLocalInfile(connection, path6) {
         if (this._streamFactory) {
-          this._localStream = this._streamFactory(path4);
+          this._localStream = this._streamFactory(path6);
         } else {
           this._localStreamError = new Error(
-            `As a result of LOCAL INFILE command server wants to read ${path4} file, but as of v2.0 you must provide streamFactory option returning ReadStream.`
+            `As a result of LOCAL INFILE command server wants to read ${path6} file, but as of v2.0 you must provide streamFactory option returning ReadStream.`
           );
           connection.writePacket(EmptyPacket);
           return this.infileOk;
@@ -17835,15 +17835,15 @@ var require_named_placeholders = __commonJS({
         config2.placeholder = "?";
       }
       let ncache = 100;
-      let cache;
+      let cache2;
       if (typeof config2.cache === "number") {
         ncache = config2.cache;
       }
       if (typeof config2.cache === "object") {
-        cache = config2.cache;
+        cache2 = config2.cache;
       }
-      if (config2.cache !== false && !cache) {
-        cache = require_lib3().createLRU({ max: ncache });
+      if (config2.cache !== false && !cache2) {
+        cache2 = require_lib3().createLRU({ max: ncache });
       }
       function toArrayParams(tree, params) {
         const arr = [];
@@ -17889,12 +17889,12 @@ var require_named_placeholders = __commonJS({
       }
       function compile(query, paramsObj) {
         let tree;
-        if (cache && (tree = cache.get(query))) {
+        if (cache2 && (tree = cache2.get(query))) {
           return toArrayParams(tree, paramsObj);
         }
         tree = join2(parse4(query));
-        if (cache) {
-          cache.set(query, tree);
+        if (cache2) {
+          cache2.set(query, tree);
         }
         return toArrayParams(tree, paramsObj);
       }
@@ -20455,7 +20455,7 @@ var require_mysql2 = __commonJS({
 var require_main = __commonJS({
   "node_modules/dotenv/lib/main.js"(exports, module) {
     var fs3 = __require("fs");
-    var path4 = __require("path");
+    var path6 = __require("path");
     var os = __require("os");
     var crypto4 = __require("crypto");
     var TIPS = [
@@ -20594,7 +20594,7 @@ var require_main = __commonJS({
           possibleVaultPath = options.path.endsWith(".vault") ? options.path : `${options.path}.vault`;
         }
       } else {
-        possibleVaultPath = path4.resolve(process.cwd(), ".env.vault");
+        possibleVaultPath = path6.resolve(process.cwd(), ".env.vault");
       }
       if (fs3.existsSync(possibleVaultPath)) {
         return possibleVaultPath;
@@ -20602,7 +20602,7 @@ var require_main = __commonJS({
       return null;
     }
     function _resolveHome(envPath) {
-      return envPath[0] === "~" ? path4.join(os.homedir(), envPath.slice(1)) : envPath;
+      return envPath[0] === "~" ? path6.join(os.homedir(), envPath.slice(1)) : envPath;
     }
     function _configVault(options) {
       const debug = parseBoolean(process.env.DOTENV_CONFIG_DEBUG || options && options.debug);
@@ -20619,7 +20619,7 @@ var require_main = __commonJS({
       return { parsed };
     }
     function configDotenv(options) {
-      const dotenvPath = path4.resolve(process.cwd(), ".env");
+      const dotenvPath = path6.resolve(process.cwd(), ".env");
       let encoding = "utf8";
       let processEnv = process.env;
       if (options && options.processEnv != null) {
@@ -20647,13 +20647,13 @@ var require_main = __commonJS({
       }
       let lastError;
       const parsedAll = {};
-      for (const path5 of optionPaths) {
+      for (const path7 of optionPaths) {
         try {
-          const parsed = DotenvModule.parse(fs3.readFileSync(path5, { encoding }));
+          const parsed = DotenvModule.parse(fs3.readFileSync(path7, { encoding }));
           DotenvModule.populate(parsedAll, parsed, options);
         } catch (e) {
           if (debug) {
-            _debug(`failed to load ${path5} ${e.message}`);
+            _debug(`failed to load ${path7} ${e.message}`);
           }
           lastError = e;
         }
@@ -20666,7 +20666,7 @@ var require_main = __commonJS({
         const shortPaths = [];
         for (const filePath of optionPaths) {
           try {
-            const relative = path4.relative(process.cwd(), filePath);
+            const relative = path6.relative(process.cwd(), filePath);
             shortPaths.push(relative);
           } catch (e) {
             if (debug) {
@@ -20933,10 +20933,10 @@ var init_serve_static = __esm({
       });
       return body;
     };
-    getStats = (path4) => {
+    getStats = (path6) => {
       let stats;
       try {
-        stats = statSync(path4);
+        stats = statSync(path6);
       } catch {
       }
       return stats;
@@ -20979,21 +20979,21 @@ var init_serve_static = __esm({
             return next();
           }
         }
-        let path4 = join(
+        let path6 = join(
           root,
           !optionPath && options.rewriteRequestPath ? options.rewriteRequestPath(filename, c) : filename
         );
-        let stats = getStats(path4);
+        let stats = getStats(path6);
         if (stats && stats.isDirectory()) {
           const indexFile = options.index ?? "index.html";
-          path4 = join(path4, indexFile);
-          stats = getStats(path4);
+          path6 = join(path6, indexFile);
+          stats = getStats(path6);
         }
         if (!stats) {
-          await options.onNotFound?.(path4, c);
+          await options.onNotFound?.(path6, c);
           return next();
         }
-        const mimeType = getMimeType(path4);
+        const mimeType = getMimeType(path6);
         c.header("Content-Type", mimeType || "application/octet-stream");
         if (options.precompressed && (!mimeType || COMPRESSIBLE_CONTENT_TYPE_REGEX.test(mimeType))) {
           const acceptEncodingSet = new Set(
@@ -21003,12 +21003,12 @@ var init_serve_static = __esm({
             if (!acceptEncodingSet.has(encoding)) {
               continue;
             }
-            const precompressedStats = getStats(path4 + ENCODINGS[encoding]);
+            const precompressedStats = getStats(path6 + ENCODINGS[encoding]);
             if (precompressedStats) {
               c.header("Content-Encoding", encoding);
               c.header("Vary", "Accept-Encoding", { append: true });
               stats = precompressedStats;
-              path4 = path4 + ENCODINGS[encoding];
+              path6 = path6 + ENCODINGS[encoding];
               break;
             }
           }
@@ -21022,7 +21022,7 @@ var init_serve_static = __esm({
           result = c.body(null);
         } else if (!range) {
           c.header("Content-Length", size.toString());
-          result = c.body(createStreamBody(createReadStream(path4)), 200);
+          result = c.body(createStreamBody(createReadStream(path6)), 200);
         } else {
           c.header("Accept-Ranges", "bytes");
           c.header("Date", stats.birthtime.toUTCString());
@@ -21033,12 +21033,12 @@ var init_serve_static = __esm({
             end = size - 1;
           }
           const chunksize = end - start + 1;
-          const stream = createReadStream(path4, { start, end });
+          const stream = createReadStream(path6, { start, end });
           c.header("Content-Length", chunksize.toString());
           c.header("Content-Range", `bytes ${start}-${end}/${stats.size}`);
           result = c.body(createStreamBody(stream), 206);
         }
-        await options.onFound?.(path4, c);
+        await options.onFound?.(path6, c);
         return result;
       };
     };
@@ -21051,16 +21051,16 @@ __export(vite_exports, {
   serveStaticFiles: () => serveStaticFiles
 });
 import fs2 from "fs";
-import path3 from "path";
+import path5 from "path";
 function serveStaticFiles(app2) {
-  const distPath = path3.resolve(import.meta.dirname, "../dist/public");
+  const distPath = path5.resolve(import.meta.dirname, "../dist/public");
   app2.use("*", serveStatic({ root: "./dist/public" }));
   app2.notFound((c) => {
     const accept = c.req.header("accept") ?? "";
     if (!accept.includes("text/html")) {
       return c.json({ error: "Not Found" }, 404);
     }
-    const indexPath = path3.resolve(distPath, "index.html");
+    const indexPath = path5.resolve(distPath, "index.html");
     const content = fs2.readFileSync(indexPath, "utf-8");
     return c.html(content);
   });
@@ -21252,26 +21252,26 @@ var handleParsingNestedValues = (form, key, value) => {
 };
 
 // node_modules/hono/dist/utils/url.js
-var splitPath = (path4) => {
-  const paths = path4.split("/");
+var splitPath = (path6) => {
+  const paths = path6.split("/");
   if (paths[0] === "") {
     paths.shift();
   }
   return paths;
 };
 var splitRoutingPath = (routePath) => {
-  const { groups, path: path4 } = extractGroupsFromPath(routePath);
-  const paths = splitPath(path4);
+  const { groups, path: path6 } = extractGroupsFromPath(routePath);
+  const paths = splitPath(path6);
   return replaceGroupMarks(paths, groups);
 };
-var extractGroupsFromPath = (path4) => {
+var extractGroupsFromPath = (path6) => {
   const groups = [];
-  path4 = path4.replace(/\{[^}]+\}/g, (match2, index2) => {
+  path6 = path6.replace(/\{[^}]+\}/g, (match2, index2) => {
     const mark = `@${index2}`;
     groups.push([mark, match2]);
     return mark;
   });
-  return { groups, path: path4 };
+  return { groups, path: path6 };
 };
 var replaceGroupMarks = (paths, groups) => {
   for (let i = groups.length - 1; i >= 0; i--) {
@@ -21328,8 +21328,8 @@ var getPath = (request) => {
       const queryIndex = url2.indexOf("?", i);
       const hashIndex = url2.indexOf("#", i);
       const end = queryIndex === -1 ? hashIndex === -1 ? void 0 : hashIndex : hashIndex === -1 ? queryIndex : Math.min(queryIndex, hashIndex);
-      const path4 = url2.slice(start, end);
-      return tryDecodeURI(path4.includes("%25") ? path4.replace(/%25/g, "%2525") : path4);
+      const path6 = url2.slice(start, end);
+      return tryDecodeURI(path6.includes("%25") ? path6.replace(/%25/g, "%2525") : path6);
     } else if (charCode === 63 || charCode === 35) {
       break;
     }
@@ -21346,11 +21346,11 @@ var mergePath = (base, sub, ...rest) => {
   }
   return `${base?.[0] === "/" ? "" : "/"}${base}${sub === "/" ? "" : `${base?.at(-1) === "/" ? "" : "/"}${sub?.[0] === "/" ? sub.slice(1) : sub}`}`;
 };
-var checkOptionalParameter = (path4) => {
-  if (path4.charCodeAt(path4.length - 1) !== 63 || !path4.includes(":")) {
+var checkOptionalParameter = (path6) => {
+  if (path6.charCodeAt(path6.length - 1) !== 63 || !path6.includes(":")) {
     return null;
   }
-  const segments = path4.split("/");
+  const segments = path6.split("/");
   const results = [];
   let basePath = "";
   segments.forEach((segment) => {
@@ -21488,9 +21488,9 @@ var HonoRequest = class {
    */
   path;
   bodyCache = {};
-  constructor(request, path4 = "/", matchResult = [[]]) {
+  constructor(request, path6 = "/", matchResult = [[]]) {
     this.raw = request;
-    this.path = path4;
+    this.path = path6;
     this.#matchResult = matchResult;
   }
   param(key) {
@@ -22257,8 +22257,8 @@ var Hono = class _Hono {
         return this;
       };
     });
-    this.on = (method, path4, ...handlers2) => {
-      for (const p of [path4].flat()) {
+    this.on = (method, path6, ...handlers2) => {
+      for (const p of [path6].flat()) {
         this.#path = p;
         for (const m of [method].flat()) {
           handlers2.map((handler2) => {
@@ -22315,8 +22315,8 @@ var Hono = class _Hono {
    * app.route("/api", app2) // GET /api/user
    * ```
    */
-  route(path4, app2) {
-    const subApp = this.basePath(path4);
+  route(path6, app2) {
+    const subApp = this.basePath(path6);
     app2.routes.map((r) => {
       let handler2;
       if (app2.errorHandler === errorHandler) {
@@ -22342,9 +22342,9 @@ var Hono = class _Hono {
    * const api = new Hono().basePath('/api')
    * ```
    */
-  basePath(path4) {
+  basePath(path6) {
     const subApp = this.#clone();
-    subApp._basePath = mergePath(this._basePath, path4);
+    subApp._basePath = mergePath(this._basePath, path6);
     return subApp;
   }
   /**
@@ -22418,7 +22418,7 @@ var Hono = class _Hono {
    * })
    * ```
    */
-  mount(path4, applicationHandler, options) {
+  mount(path6, applicationHandler, options) {
     let replaceRequest;
     let optionHandler;
     if (options) {
@@ -22445,7 +22445,7 @@ var Hono = class _Hono {
       return [c.env, executionContext];
     };
     replaceRequest ||= (() => {
-      const mergedPath = mergePath(this._basePath, path4);
+      const mergedPath = mergePath(this._basePath, path6);
       const pathPrefixLength = mergedPath === "/" ? 0 : mergedPath.length;
       return (request) => {
         const url2 = new URL(request.url);
@@ -22460,19 +22460,19 @@ var Hono = class _Hono {
       }
       await next();
     };
-    this.#addRoute(METHOD_NAME_ALL, mergePath(path4, "*"), handler2);
+    this.#addRoute(METHOD_NAME_ALL, mergePath(path6, "*"), handler2);
     return this;
   }
-  #addRoute(method, path4, handler2, baseRoutePath) {
+  #addRoute(method, path6, handler2, baseRoutePath) {
     method = method.toUpperCase();
-    path4 = mergePath(this._basePath, path4);
+    path6 = mergePath(this._basePath, path6);
     const r = {
       basePath: baseRoutePath !== void 0 ? mergePath(this._basePath, baseRoutePath) : this._basePath,
-      path: path4,
+      path: path6,
       method,
       handler: handler2
     };
-    this.router.add(method, path4, [handler2, r]);
+    this.router.add(method, path6, [handler2, r]);
     this.routes.push(r);
   }
   #handleError(err, c) {
@@ -22485,10 +22485,10 @@ var Hono = class _Hono {
     if (method === "HEAD") {
       return (async () => new Response(null, await this.#dispatch(request, executionCtx, env2, "GET")))();
     }
-    const path4 = this.getPath(request, { env: env2 });
-    const matchResult = this.router.match(method, path4);
+    const path6 = this.getPath(request, { env: env2 });
+    const matchResult = this.router.match(method, path6);
     const c = new Context(request, {
-      path: path4,
+      path: path6,
       matchResult,
       env: env2,
       executionCtx,
@@ -22588,7 +22588,7 @@ var Hono = class _Hono {
 
 // node_modules/hono/dist/router/reg-exp-router/matcher.js
 var emptyParam = [];
-function match(method, path4) {
+function match(method, path6) {
   const matchers = this.buildAllMatchers();
   const match2 = ((method2, path22) => {
     const matcher = matchers[method2] || matchers[METHOD_NAME_ALL];
@@ -22604,7 +22604,7 @@ function match(method, path4) {
     return [matcher[1][index2], match3];
   });
   this.match = match2;
-  return match2(method, path4);
+  return match2(method, path6);
 }
 
 // node_modules/hono/dist/router/reg-exp-router/node.js
@@ -22721,14 +22721,14 @@ var Trie = class {
   #index = 0;
   // dynamic path -> [handler index, param assoc]; static paths are not registered
   paths = /* @__PURE__ */ Object.create(null);
-  insert(path4, isStatic) {
+  insert(path6, isStatic) {
     if (isStatic) {
-      this.#root.insert(path4.split(""), 0, [], this.#context, true);
+      this.#root.insert(path6.split(""), 0, [], this.#context, true);
       return;
     }
     const paramAssoc = [];
     const groups = [];
-    let markedPath = path4;
+    let markedPath = path6;
     for (let i = 0; ; ) {
       let replaced = false;
       markedPath = markedPath.replace(/\{[^}]+\}/g, (m) => {
@@ -22753,7 +22753,7 @@ var Trie = class {
       }
     }
     this.#root.insert(tokens, this.#index, paramAssoc, this.#context, false);
-    this.paths[path4] = [this.#index++, paramAssoc];
+    this.paths[path6] = [this.#index++, paramAssoc];
   }
   buildRegExp() {
     let regexp = this.#root.buildRegExpStr();
@@ -22780,9 +22780,9 @@ var Trie = class {
 
 // node_modules/hono/dist/router/reg-exp-router/router.js
 var wildcardRegExpCache = /* @__PURE__ */ Object.create(null);
-function buildWildcardRegExp(path4) {
-  return wildcardRegExpCache[path4] ??= new RegExp(
-    path4 === "*" ? "" : `^${path4.replace(
+function buildWildcardRegExp(path6) {
+  return wildcardRegExpCache[path6] ??= new RegExp(
+    path6 === "*" ? "" : `^${path6.replace(
       /\/\*$|([.\\+*[^\]$()])/g,
       (_, metaChar) => metaChar ? `\\${metaChar}` : "(?:|/.*)"
     )}$`
@@ -22791,12 +22791,12 @@ function buildWildcardRegExp(path4) {
 function clearWildcardRegExpCache() {
   wildcardRegExpCache = /* @__PURE__ */ Object.create(null);
 }
-function findMiddleware(middleware, path4) {
+function findMiddleware(middleware, path6) {
   if (!middleware) {
     return void 0;
   }
   for (const k of Object.keys(middleware).sort((a, b) => b.length - a.length)) {
-    if (buildWildcardRegExp(k).test(path4)) {
+    if (buildWildcardRegExp(k).test(path6)) {
       return [...middleware[k]];
     }
   }
@@ -22812,14 +22812,14 @@ var RegExpRouter = class {
     this.#routes = { [METHOD_NAME_ALL]: /* @__PURE__ */ Object.create(null) };
     this.#tries = { [METHOD_NAME_ALL]: new Trie() };
   }
-  #insertPath(method, path4) {
+  #insertPath(method, path6) {
     try {
-      this.#tries[method].insert(path4, !/\*|\/:/.test(path4));
+      this.#tries[method].insert(path6, !/\*|\/:/.test(path6));
     } catch (e) {
-      throw e === PATH_ERROR ? new UnsupportedPathError(path4) : e;
+      throw e === PATH_ERROR ? new UnsupportedPathError(path6) : e;
     }
   }
-  add(method, path4, handler2) {
+  add(method, path6, handler2) {
     const middleware = this.#middleware;
     const routes = this.#routes;
     if (!middleware || !routes) {
@@ -22835,16 +22835,16 @@ var RegExpRouter = class {
         });
       });
     }
-    if (path4 === "/*") {
-      path4 = "*";
+    if (path6 === "/*") {
+      path6 = "*";
     }
-    const paramCount = (path4.match(/\/:/g) || []).length;
-    if (/\*$/.test(path4)) {
-      const re = buildWildcardRegExp(path4);
+    const paramCount = (path6.match(/\/:/g) || []).length;
+    if (/\*$/.test(path6)) {
+      const re = buildWildcardRegExp(path6);
       Object.keys(middleware).forEach((m) => {
-        if ((method === METHOD_NAME_ALL || method === m) && !middleware[m][path4]) {
-          this.#insertPath(m, path4);
-          middleware[m][path4] = findMiddleware(middleware[m], path4) || findMiddleware(middleware[METHOD_NAME_ALL], path4) || [];
+        if ((method === METHOD_NAME_ALL || method === m) && !middleware[m][path6]) {
+          this.#insertPath(m, path6);
+          middleware[m][path6] = findMiddleware(middleware[m], path6) || findMiddleware(middleware[METHOD_NAME_ALL], path6) || [];
         }
       });
       Object.keys(middleware).forEach((m) => {
@@ -22863,7 +22863,7 @@ var RegExpRouter = class {
       });
       return;
     }
-    const paths = checkOptionalParameter(path4) || [path4];
+    const paths = checkOptionalParameter(path6) || [path6];
     for (let i = 0, len = paths.length; i < len; i++) {
       const path22 = paths[i];
       Object.keys(routes).forEach((m) => {
@@ -22896,11 +22896,11 @@ var RegExpRouter = class {
     const staticMap = /* @__PURE__ */ Object.create(null);
     const handlerData = [];
     [middleware, routes].forEach((r) => {
-      for (const path4 in r) {
-        const handlers2 = r[path4];
-        const pathData = trie.paths[path4];
+      for (const path6 in r) {
+        const handlers2 = r[path6];
+        const pathData = trie.paths[path6];
         if (!pathData) {
-          staticMap[path4] = [handlers2.map(([h]) => [h, /* @__PURE__ */ Object.create(null)]), emptyParam];
+          staticMap[path6] = [handlers2.map(([h]) => [h, /* @__PURE__ */ Object.create(null)]), emptyParam];
           continue;
         }
         const paramAssoc = pathData[1];
@@ -22944,13 +22944,13 @@ var SmartRouter = class {
   constructor(init) {
     this.#routers = init.routers;
   }
-  add(method, path4, handler2) {
+  add(method, path6, handler2) {
     if (!this.#routes) {
       throw new Error(MESSAGE_MATCHER_IS_ALREADY_BUILT);
     }
-    this.#routes.push([method, path4, handler2]);
+    this.#routes.push([method, path6, handler2]);
   }
-  match(method, path4) {
+  match(method, path6) {
     if (!this.#routes) {
       throw new Error("Fatal error");
     }
@@ -22965,7 +22965,7 @@ var SmartRouter = class {
         for (let i2 = 0, len2 = routes.length; i2 < len2; i2++) {
           router.add(...routes[i2]);
         }
-        res = router.match(method, path4);
+        res = router.match(method, path6);
       } catch (e) {
         if (e instanceof UnsupportedPathError) {
           continue;
@@ -23015,10 +23015,10 @@ var Node2 = class _Node2 {
     }
     this.#patterns = [];
   }
-  insert(method, path4, handler2) {
+  insert(method, path6, handler2) {
     this.#order = ++this.#order;
     let curNode = this;
-    const parts = splitRoutingPath(path4);
+    const parts = splitRoutingPath(path6);
     const possibleKeys = [];
     for (let i = 0, len = parts.length; i < len; i++) {
       const p = parts[i];
@@ -23067,12 +23067,12 @@ var Node2 = class _Node2 {
       }
     }
   }
-  search(method, path4) {
+  search(method, path6) {
     const handlerSets = [];
     this.#params = emptyParams;
     const curNode = this;
     let curNodes = [curNode];
-    const parts = splitPath(path4);
+    const parts = splitPath(path6);
     const curNodesQueue = [];
     const len = parts.length;
     let partOffsets = null;
@@ -23114,13 +23114,13 @@ var Node2 = class _Node2 {
           if (matcher instanceof RegExp) {
             if (partOffsets === null) {
               partOffsets = new Array(len);
-              let offset = path4[0] === "/" ? 1 : 0;
+              let offset = path6[0] === "/" ? 1 : 0;
               for (let p = 0; p < len; p++) {
                 partOffsets[p] = offset;
                 offset += parts[p].length + 1;
               }
             }
-            const restPathString = path4.substring(partOffsets[i]);
+            const restPathString = path6.substring(partOffsets[i]);
             const m = matcher.exec(restPathString);
             if (m) {
               params[name] = m[0];
@@ -23182,18 +23182,18 @@ var TrieRouter = class {
   constructor() {
     this.#node = new Node2();
   }
-  add(method, path4, handler2) {
-    const results = checkOptionalParameter(path4);
+  add(method, path6, handler2) {
+    const results = checkOptionalParameter(path6);
     if (results) {
       for (let i = 0, len = results.length; i < len; i++) {
         this.#node.insert(method, results[i], handler2);
       }
       return;
     }
-    this.#node.insert(method, path4, handler2);
+    this.#node.insert(method, path6, handler2);
   }
-  match(method, path4) {
-    return this.#node.search(method, path4);
+  match(method, path6) {
+    return this.#node.search(method, path6);
   }
 };
 
@@ -23382,31 +23382,31 @@ var noop = () => {
 var freezeIfAvailable = (obj) => {
   if (Object.freeze) Object.freeze(obj);
 };
-function createInnerProxy(callback, path4, memo2) {
+function createInnerProxy(callback, path6, memo2) {
   var _memo$cacheKey;
-  const cacheKey2 = path4.join(".");
+  const cacheKey2 = path6.join(".");
   (_memo$cacheKey = memo2[cacheKey2]) !== null && _memo$cacheKey !== void 0 || (memo2[cacheKey2] = new Proxy(noop, {
     get(_obj, key) {
       if (typeof key !== "string" || key === "then") return void 0;
-      return createInnerProxy(callback, [...path4, key], memo2);
+      return createInnerProxy(callback, [...path6, key], memo2);
     },
     apply(_1, _2, args) {
-      const lastOfPath = path4[path4.length - 1];
+      const lastOfPath = path6[path6.length - 1];
       if (lastOfPath === "valueOf" || lastOfPath === "toString" || lastOfPath === "toJSON") {
-        const debugPath = path4.slice(0, -1).join(".");
+        const debugPath = path6.slice(0, -1).join(".");
         return `tRPC.proxy(${debugPath})`;
       }
       let opts = {
         args,
-        path: path4
+        path: path6
       };
       if (lastOfPath === "call") opts = {
         args: args.length >= 2 ? [args[1]] : [],
-        path: path4.slice(0, -1)
+        path: path6.slice(0, -1)
       };
       else if (lastOfPath === "apply") opts = {
         args: args.length >= 2 ? args[1] : [],
-        path: path4.slice(0, -1)
+        path: path6.slice(0, -1)
       };
       freezeIfAvailable(opts.args);
       freezeIfAvailable(opts.path);
@@ -23534,7 +23534,7 @@ var require_objectSpread2 = __commonJS2({ "../../node_modules/.pnpm/@oxc-project
 } });
 var import_objectSpread2 = __toESM2(require_objectSpread2(), 1);
 function getErrorShape(opts) {
-  const { path: path4, error: error48, config: config2 } = opts;
+  const { path: path6, error: error48, config: config2 } = opts;
   const { code } = opts.error;
   const shape = {
     message: error48.message,
@@ -23545,7 +23545,7 @@ function getErrorShape(opts) {
     }
   };
   if (config2.isDev && typeof opts.error.stack === "string") shape.data.stack = opts.error.stack;
-  if (typeof path4 === "string") shape.data.path = path4;
+  if (typeof path6 === "string") shape.data.path = path6;
   return config2.errorFormatter((0, import_objectSpread2.default)((0, import_objectSpread2.default)({}, opts), {}, { shape }));
 }
 
@@ -23679,12 +23679,12 @@ function createRouterFactory(config2) {
         })
       };
     }
-    function step(from, path4 = []) {
+    function step(from, path6 = []) {
       const aggregate = emptyObject();
       for (const [key, item] of Object.entries(from !== null && from !== void 0 ? from : {})) {
         if (isLazy(item)) {
-          lazy$1[[...path4, key].join(".")] = createLazyLoader({
-            path: path4,
+          lazy$1[[...path6, key].join(".")] = createLazyLoader({
+            path: path6,
             ref: item,
             key,
             aggregate
@@ -23692,14 +23692,14 @@ function createRouterFactory(config2) {
           continue;
         }
         if (isRouter(item)) {
-          aggregate[key] = step(item._def.record, [...path4, key]);
+          aggregate[key] = step(item._def.record, [...path6, key]);
           continue;
         }
         if (!isProcedure(item)) {
-          aggregate[key] = step(item, [...path4, key]);
+          aggregate[key] = step(item, [...path6, key]);
           continue;
         }
-        const newPath = [...path4, key].join(".");
+        const newPath = [...path6, key].join(".");
         if (procedures[newPath]) throw new Error(`Duplicate key: ${newPath}`);
         procedures[newPath] = item;
         aggregate[key] = item;
@@ -23724,15 +23724,15 @@ function createRouterFactory(config2) {
 function isProcedure(procedureOrRouter) {
   return typeof procedureOrRouter === "function";
 }
-async function getProcedureAtPath(router, path4) {
+async function getProcedureAtPath(router, path6) {
   const { _def } = router;
-  let procedure = _def.procedures[path4];
+  let procedure = _def.procedures[path6];
   while (!procedure) {
-    const key = Object.keys(_def.lazy).find((key$1) => path4.startsWith(key$1));
+    const key = Object.keys(_def.lazy).find((key$1) => path6.startsWith(key$1));
     if (!key) return null;
     const lazyRouter = _def.lazy[key];
     await lazyRouter.load();
-    procedure = _def.procedures[path4];
+    procedure = _def.procedures[path6];
   }
   return procedure;
 }
@@ -23741,15 +23741,15 @@ function createCallerFactory() {
     const { _def } = router;
     return function createCaller(ctxOrCallback, opts) {
       return createRecursiveProxy(async (innerOpts) => {
-        const { path: path4, args } = innerOpts;
-        const fullPath = path4.join(".");
-        if (path4.length === 1 && path4[0] === "_def") return _def;
+        const { path: path6, args } = innerOpts;
+        const fullPath = path6.join(".");
+        if (path6.length === 1 && path6[0] === "_def") return _def;
         const procedure = await getProcedureAtPath(router, fullPath);
         let ctx = void 0;
         try {
           if (!procedure) throw new TRPCError({
             code: "NOT_FOUND",
-            message: `No procedure found on path "${path4}"`
+            message: `No procedure found on path "${path6}"`
           });
           ctx = isFunction(ctxOrCallback) ? await Promise.resolve(ctxOrCallback()) : ctxOrCallback;
           return await procedure({
@@ -23974,11 +23974,11 @@ var jsonContentTypeHandler = {
       }
       return acc;
     });
-    const calls = await Promise.all(paths.map(async (path4, index2) => {
-      const procedure = await getProcedureAtPath(opts.router, path4);
+    const calls = await Promise.all(paths.map(async (path6, index2) => {
+      const procedure = await getProcedureAtPath(opts.router, path6);
       return {
         batchIndex: index2,
-        path: path4,
+        path: path6,
         procedure,
         getRawInput: async () => {
           const inputs = await getInputs.read();
@@ -24786,9 +24786,9 @@ function isPromise2(value) {
   return (isObject(value) || isFunction(value)) && typeof (value === null || value === void 0 ? void 0 : value["then"]) === "function" && typeof (value === null || value === void 0 ? void 0 : value["catch"]) === "function";
 }
 var MaxDepthError = class extends Error {
-  constructor(path4) {
-    super("Max depth reached at path: " + path4.join("."));
-    this.path = path4;
+  constructor(path6) {
+    super("Max depth reached at path: " + path6.join("."));
+    this.path = path6;
   }
 };
 function createBatchStreamProducer(_x3) {
@@ -24806,16 +24806,16 @@ function _createBatchStreamProducer() {
       mergedIterables.add(iterable$1);
       return idx;
     }
-    function encodePromise(promise2, path4) {
+    function encodePromise(promise2, path6) {
       return registerAsync(/* @__PURE__ */ (function() {
         var _ref = (0, import_wrapAsyncGenerator$2.default)(function* (idx) {
-          const error48 = checkMaxDepth(path4);
+          const error48 = checkMaxDepth(path6);
           if (error48) {
             promise2.catch((cause) => {
               var _opts$onError;
               (_opts$onError = opts.onError) === null || _opts$onError === void 0 || _opts$onError.call(opts, {
                 error: cause,
-                path: path4
+                path: path6
               });
             });
             promise2 = Promise.reject(error48);
@@ -24825,20 +24825,20 @@ function _createBatchStreamProducer() {
             yield [
               idx,
               PROMISE_STATUS_FULFILLED,
-              encode3(next, path4)
+              encode3(next, path6)
             ];
           } catch (cause) {
             var _opts$onError2, _opts$formatError;
             (_opts$onError2 = opts.onError) === null || _opts$onError2 === void 0 || _opts$onError2.call(opts, {
               error: cause,
-              path: path4
+              path: path6
             });
             yield [
               idx,
               PROMISE_STATUS_REJECTED,
               (_opts$formatError = opts.formatError) === null || _opts$formatError === void 0 ? void 0 : _opts$formatError.call(opts, {
                 error: cause,
-                path: path4
+                path: path6
               })
             ];
           }
@@ -24848,12 +24848,12 @@ function _createBatchStreamProducer() {
         };
       })());
     }
-    function encodeAsyncIterable(iterable$1, path4) {
+    function encodeAsyncIterable(iterable$1, path6) {
       return registerAsync(/* @__PURE__ */ (function() {
         var _ref2 = (0, import_wrapAsyncGenerator$2.default)(function* (idx) {
           try {
             var _usingCtx$1 = (0, import_usingCtx$1.default)();
-            const error48 = checkMaxDepth(path4);
+            const error48 = checkMaxDepth(path6);
             if (error48) throw error48;
             const iterator = _usingCtx$1.a(iteratorResource(iterable$1));
             try {
@@ -24863,28 +24863,28 @@ function _createBatchStreamProducer() {
                   yield [
                     idx,
                     ASYNC_ITERABLE_STATUS_RETURN,
-                    encode3(next.value, path4)
+                    encode3(next.value, path6)
                   ];
                   break;
                 }
                 yield [
                   idx,
                   ASYNC_ITERABLE_STATUS_YIELD,
-                  encode3(next.value, path4)
+                  encode3(next.value, path6)
                 ];
               }
             } catch (cause) {
               var _opts$onError3, _opts$formatError2;
               (_opts$onError3 = opts.onError) === null || _opts$onError3 === void 0 || _opts$onError3.call(opts, {
                 error: cause,
-                path: path4
+                path: path6
               });
               yield [
                 idx,
                 ASYNC_ITERABLE_STATUS_ERROR,
                 (_opts$formatError2 = opts.formatError) === null || _opts$formatError2 === void 0 ? void 0 : _opts$formatError2.call(opts, {
                   error: cause,
-                  path: path4
+                  path: path6
                 })
               ];
             }
@@ -24899,27 +24899,27 @@ function _createBatchStreamProducer() {
         };
       })());
     }
-    function checkMaxDepth(path4) {
-      if (opts.maxDepth && path4.length > opts.maxDepth) return new MaxDepthError(path4);
+    function checkMaxDepth(path6) {
+      if (opts.maxDepth && path6.length > opts.maxDepth) return new MaxDepthError(path6);
       return null;
     }
-    function encodeAsync3(value, path4) {
-      if (isPromise2(value)) return [CHUNK_VALUE_TYPE_PROMISE, encodePromise(value, path4)];
+    function encodeAsync3(value, path6) {
+      if (isPromise2(value)) return [CHUNK_VALUE_TYPE_PROMISE, encodePromise(value, path6)];
       if (isAsyncIterable(value)) {
-        if (opts.maxDepth && path4.length >= opts.maxDepth) throw new Error("Max depth reached");
-        return [CHUNK_VALUE_TYPE_ASYNC_ITERABLE, encodeAsyncIterable(value, path4)];
+        if (opts.maxDepth && path6.length >= opts.maxDepth) throw new Error("Max depth reached");
+        return [CHUNK_VALUE_TYPE_ASYNC_ITERABLE, encodeAsyncIterable(value, path6)];
       }
       return null;
     }
-    function encode3(value, path4) {
+    function encode3(value, path6) {
       if (value === void 0) return [[]];
-      const reg = encodeAsync3(value, path4);
+      const reg = encodeAsync3(value, path6);
       if (reg) return [[placeholder], [null, ...reg]];
       if (!isPlainObject(value)) return [[value]];
       const newObj = emptyObject();
       const asyncValues = [];
       for (const [key, item] of Object.entries(value)) {
-        const transformed = encodeAsync3(item, [...path4, key]);
+        const transformed = encodeAsync3(item, [...path6, key]);
         if (!transformed) {
           newObj[key] = item;
           continue;
@@ -25363,11 +25363,11 @@ async function resolveResponse(opts) {
               var _call$procedure$_def$2, _call$procedure3, _opts$onError2;
               const error$1 = getTRPCErrorFromUnknown(errorOpts.error);
               const input = call === null || call === void 0 ? void 0 : call.result();
-              const path4 = call === null || call === void 0 ? void 0 : call.path;
+              const path6 = call === null || call === void 0 ? void 0 : call.path;
               const type = (_call$procedure$_def$2 = call === null || call === void 0 || (_call$procedure3 = call.procedure) === null || _call$procedure3 === void 0 ? void 0 : _call$procedure3._def.type) !== null && _call$procedure$_def$2 !== void 0 ? _call$procedure$_def$2 : "unknown";
               (_opts$onError2 = opts.onError) === null || _opts$onError2 === void 0 || _opts$onError2.call(opts, {
                 error: error$1,
-                path: path4,
+                path: path6,
                 input,
                 ctx: ctxManager.valueOrUndefined(),
                 req: opts.req,
@@ -25378,7 +25378,7 @@ async function resolveResponse(opts) {
                 ctx: ctxManager.valueOrUndefined(),
                 error: error$1,
                 input,
-                path: path4,
+                path: path6,
                 type
               });
               return shape;
@@ -25468,14 +25468,14 @@ async function resolveResponse(opts) {
           const call = info === null || info === void 0 ? void 0 : info.calls[errorOpts.path[0]];
           const error48 = getTRPCErrorFromUnknown(errorOpts.error);
           const input = call === null || call === void 0 ? void 0 : call.result();
-          const path4 = call === null || call === void 0 ? void 0 : call.path;
+          const path6 = call === null || call === void 0 ? void 0 : call.path;
           const type = (_call$procedure$_def$3 = call === null || call === void 0 || (_call$procedure4 = call.procedure) === null || _call$procedure4 === void 0 ? void 0 : _call$procedure4._def.type) !== null && _call$procedure$_def$3 !== void 0 ? _call$procedure$_def$3 : "unknown";
           const shape = getErrorShape({
             config: config2,
             ctx: ctxManager.valueOrUndefined(),
             error: error48,
             input,
-            path: path4,
+            path: path6,
             type
           });
           return shape;
@@ -25550,10 +25550,10 @@ async function resolveResponse(opts) {
 
 // node_modules/@trpc/server/dist/adapters/fetch/index.mjs
 var import_objectSpread24 = __toESM2(require_objectSpread2(), 1);
-var trimSlashes = (path4) => {
-  path4 = path4.startsWith("/") ? path4.slice(1) : path4;
-  path4 = path4.endsWith("/") ? path4.slice(0, -1) : path4;
-  return path4;
+var trimSlashes = (path6) => {
+  path6 = path6.startsWith("/") ? path6.slice(1) : path6;
+  path6 = path6.endsWith("/") ? path6.slice(0, -1) : path6;
+  return path6;
 };
 async function fetchRequestHandler(opts) {
   const resHeaders = new Headers();
@@ -25567,11 +25567,11 @@ async function fetchRequestHandler(opts) {
   const url2 = new URL(opts.req.url);
   const pathname = trimSlashes(url2.pathname);
   const endpoint = trimSlashes(opts.endpoint);
-  const path4 = trimSlashes(pathname.slice(endpoint.length));
+  const path6 = trimSlashes(pathname.slice(endpoint.length));
   return await resolveResponse((0, import_objectSpread24.default)((0, import_objectSpread24.default)({}, opts), {}, {
     req: opts.req,
     createContext: createContext2,
-    path: path4,
+    path: path6,
     error: null,
     onError(o) {
       var _opts$onError;
@@ -26062,7 +26062,7 @@ var isURL = (payload) => payload instanceof URL;
 
 // node_modules/superjson/dist/pathstringifier.js
 var escapeKey = (key) => key.replace(/\\/g, "\\\\").replace(/\./g, "\\.");
-var stringifyPath = (path4) => path4.map(String).map(escapeKey).join(".");
+var stringifyPath = (path6) => path6.map(String).map(escapeKey).join(".");
 var parsePath = (string4, legacyPaths) => {
   const result = [];
   let segment = "";
@@ -26309,26 +26309,26 @@ var getNthKey = (value, n) => {
   }
   return keys.next().value;
 };
-function validatePath(path4) {
-  if (includes(path4, "__proto__")) {
+function validatePath(path6) {
+  if (includes(path6, "__proto__")) {
     throw new Error("__proto__ is not allowed as a property");
   }
-  if (includes(path4, "prototype")) {
+  if (includes(path6, "prototype")) {
     throw new Error("prototype is not allowed as a property");
   }
-  if (includes(path4, "constructor")) {
+  if (includes(path6, "constructor")) {
     throw new Error("constructor is not allowed as a property");
   }
 }
-var getDeep = (object2, path4) => {
-  validatePath(path4);
-  for (let i = 0; i < path4.length; i++) {
-    const key = path4[i];
+var getDeep = (object2, path6) => {
+  validatePath(path6);
+  for (let i = 0; i < path6.length; i++) {
+    const key = path6[i];
     if (isSet(object2)) {
       object2 = getNthKey(object2, +key);
     } else if (isMap(object2)) {
       const row = +key;
-      const type = +path4[++i] === 0 ? "key" : "value";
+      const type = +path6[++i] === 0 ? "key" : "value";
       const keyOfRow = getNthKey(object2, row);
       switch (type) {
         case "key":
@@ -26344,14 +26344,14 @@ var getDeep = (object2, path4) => {
   }
   return object2;
 };
-var setDeep = (object2, path4, mapper) => {
-  validatePath(path4);
-  if (path4.length === 0) {
+var setDeep = (object2, path6, mapper) => {
+  validatePath(path6);
+  if (path6.length === 0) {
     return mapper(object2);
   }
   let parent = object2;
-  for (let i = 0; i < path4.length - 1; i++) {
-    const key = path4[i];
+  for (let i = 0; i < path6.length - 1; i++) {
+    const key = path6[i];
     if (isArray(parent)) {
       const index2 = +key;
       parent = parent[index2];
@@ -26361,12 +26361,12 @@ var setDeep = (object2, path4, mapper) => {
       const row = +key;
       parent = getNthKey(parent, row);
     } else if (isMap(parent)) {
-      const isEnd = i === path4.length - 2;
+      const isEnd = i === path6.length - 2;
       if (isEnd) {
         break;
       }
       const row = +key;
-      const type = +path4[++i] === 0 ? "key" : "value";
+      const type = +path6[++i] === 0 ? "key" : "value";
       const keyOfRow = getNthKey(parent, row);
       switch (type) {
         case "key":
@@ -26378,7 +26378,7 @@ var setDeep = (object2, path4, mapper) => {
       }
     }
   }
-  const lastKey = path4[path4.length - 1];
+  const lastKey = path6[path6.length - 1];
   if (isArray(parent)) {
     parent[+lastKey] = mapper(parent[+lastKey]);
   } else if (isPlainObject2(parent)) {
@@ -26393,7 +26393,7 @@ var setDeep = (object2, path4, mapper) => {
     }
   }
   if (isMap(parent)) {
-    const row = +path4[path4.length - 2];
+    const row = +path6[path6.length - 2];
     const keyToRow = getNthKey(parent, row);
     const type = +lastKey === 0 ? "key" : "value";
     switch (type) {
@@ -26440,16 +26440,16 @@ function traverse(tree, walker2, version3, origin = []) {
   walker2(nodeValue, origin);
 }
 function applyValueAnnotations(plain, annotations, version3, superJson) {
-  traverse(annotations, (type, path4) => {
-    plain = setDeep(plain, path4, (v) => untransformValue(v, type, superJson));
+  traverse(annotations, (type, path6) => {
+    plain = setDeep(plain, path6, (v) => untransformValue(v, type, superJson));
   }, version3);
   return plain;
 }
 function applyReferentialEqualityAnnotations(plain, annotations, version3) {
   const legacyPaths = enableLegacyPaths(version3);
-  function apply(identicalPaths, path4) {
-    const object2 = getDeep(plain, parsePath(path4, legacyPaths));
-    identicalPaths.map((path5) => parsePath(path5, legacyPaths)).forEach((identicalObjectPath) => {
+  function apply(identicalPaths, path6) {
+    const object2 = getDeep(plain, parsePath(path6, legacyPaths));
+    identicalPaths.map((path7) => parsePath(path7, legacyPaths)).forEach((identicalObjectPath) => {
       plain = setDeep(plain, identicalObjectPath, () => object2);
     });
   }
@@ -26467,12 +26467,12 @@ function applyReferentialEqualityAnnotations(plain, annotations, version3) {
   return plain;
 }
 var isDeep = (object2, superJson) => isPlainObject2(object2) || isArray(object2) || isMap(object2) || isSet(object2) || isError(object2) || isInstanceOfRegisteredClass(object2, superJson);
-function addIdentity(object2, path4, identities) {
+function addIdentity(object2, path6, identities) {
   const existingSet = identities.get(object2);
   if (existingSet) {
-    existingSet.push(path4);
+    existingSet.push(path6);
   } else {
-    identities.set(object2, [path4]);
+    identities.set(object2, [path6]);
   }
 }
 function generateReferentialEqualityAnnotations(identitites, dedupe) {
@@ -26483,7 +26483,7 @@ function generateReferentialEqualityAnnotations(identitites, dedupe) {
       return;
     }
     if (!dedupe) {
-      paths = paths.map((path4) => path4.map(String)).sort((a, b) => a.length - b.length);
+      paths = paths.map((path6) => path6.map(String)).sort((a, b) => a.length - b.length);
     }
     const [representativePath, ...identicalPaths] = paths;
     if (representativePath.length === 0) {
@@ -26502,10 +26502,10 @@ function generateReferentialEqualityAnnotations(identitites, dedupe) {
     return isEmptyObject(result) ? void 0 : result;
   }
 }
-var walker = (object2, identities, superJson, dedupe, path4 = [], objectsInThisPath = [], seenObjects = /* @__PURE__ */ new Map()) => {
+var walker = (object2, identities, superJson, dedupe, path6 = [], objectsInThisPath = [], seenObjects = /* @__PURE__ */ new Map()) => {
   const primitive = isPrimitive(object2);
   if (!primitive) {
-    addIdentity(object2, path4, identities);
+    addIdentity(object2, path6, identities);
     const seen = seenObjects.get(object2);
     if (seen) {
       return dedupe ? {
@@ -26539,7 +26539,7 @@ var walker = (object2, identities, superJson, dedupe, path4 = [], objectsInThisP
     if (index2 === "__proto__" || index2 === "constructor" || index2 === "prototype") {
       throw new Error(`Detected property ${index2}. This is a prototype pollution risk, please remove it from your object.`);
     }
-    const recursiveResult = walker(value, identities, superJson, dedupe, [...path4, index2], [...objectsInThisPath, object2], seenObjects);
+    const recursiveResult = walker(value, identities, superJson, dedupe, [...path6, index2], [...objectsInThisPath, object2], seenObjects);
     transformedValue[index2] = recursiveResult.transformedValue;
     if (isArray(recursiveResult.annotations)) {
       innerAnnotations[escapeKey(index2)] = recursiveResult.annotations;
@@ -27477,10 +27477,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path4) {
-  if (!path4)
+function getElementAtPath(obj, path6) {
+  if (!path6)
     return obj;
-  return path4.reduce((acc, key) => acc?.[key], obj);
+  return path6.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -27863,11 +27863,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path4, issues) {
+function prefixIssues(path6, issues) {
   return issues.map((iss) => {
     var _a2;
     (_a2 = iss).path ?? (_a2.path = []);
-    iss.path.unshift(path4);
+    iss.path.unshift(path6);
     return iss;
   });
 }
@@ -28050,7 +28050,7 @@ function formatError(error48, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error48, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error49, path4 = []) => {
+  const processError = (error49, path6 = []) => {
     var _a2, _b;
     for (const issue2 of error49.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
@@ -28060,7 +28060,7 @@ function treeifyError(error48, mapper = (issue2) => issue2.message) {
       } else if (issue2.code === "invalid_element") {
         processError({ issues: issue2.issues }, issue2.path);
       } else {
-        const fullpath = [...path4, ...issue2.path];
+        const fullpath = [...path6, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -28092,8 +28092,8 @@ function treeifyError(error48, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path4 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path4) {
+  const path6 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path6) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -40070,13 +40070,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path4 = ref.slice(1).split("/").filter(Boolean);
-  if (path4.length === 0) {
+  const path6 = ref.slice(1).split("/").filter(Boolean);
+  if (path6.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path4[0] === defsKey) {
-    const key = path4[1];
+  if (path6[0] === defsKey) {
+    const key = path6[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -40478,6 +40478,354 @@ function date4(params) {
 // node_modules/zod/v4/classic/external.js
 config(en_default());
 
+// api/providers/batComps.ts
+var API_BASE = "https://api.parse.bot/scraper/0ea2dbf8-cbae-4a6b-90d3-149278f4a294";
+var TIMEOUT_MS = 15e3;
+var CACHE_TTL_MS = 24 * 864e5;
+var DAILY_CALL_CAP = 20;
+function parseBotConfigured() {
+  return Boolean(process.env.PARSEBOT_API_KEY?.trim());
+}
+function apiKey() {
+  const key = process.env.PARSEBOT_API_KEY?.trim();
+  if (!key) throw new Error("PARSEBOT_API_KEY is not configured on the server.");
+  return key;
+}
+function asObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : void 0;
+}
+function path(source, dottedPath) {
+  return dottedPath.split(".").reduce((current, key) => asObject(current)?.[key], source);
+}
+function stringAt(source, paths) {
+  for (const candidate of paths) {
+    const value = path(source, candidate);
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return void 0;
+}
+function numberAt(source, paths) {
+  for (const candidate of paths) {
+    const value = path(source, candidate);
+    if (typeof value === "number" && Number.isFinite(value)) return Math.round(value);
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value.replace(/[$,]/g, ""));
+      if (Number.isFinite(parsed)) return Math.round(parsed);
+    }
+  }
+  return void 0;
+}
+function firstArrayDeep(value, depth = 0) {
+  if (depth > 4 || value == null) return void 0;
+  if (Array.isArray(value)) return value.length ? value : void 0;
+  const object2 = asObject(value);
+  if (!object2) return void 0;
+  for (const key of ["results", "auctions", "listings", "data", "models", "makes", "sales", "points", "items"]) {
+    const found = firstArrayDeep(object2[key], depth + 1);
+    if (found) return found;
+  }
+  for (const item of Object.values(object2)) {
+    const found = firstArrayDeep(item, depth + 1);
+    if (found) return found;
+  }
+  return void 0;
+}
+var callLog = /* @__PURE__ */ new Map();
+var cache = /* @__PURE__ */ new Map();
+function callBudgetRemaining() {
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  return DAILY_CALL_CAP - (callLog.get(today) ?? 0);
+}
+async function callEndpoint(endpoint, params) {
+  const cacheKey2 = `${endpoint}?${new URLSearchParams(params).toString()}`;
+  const hit = cache.get(cacheKey2);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value;
+  if (callBudgetRemaining() <= 0) throw new Error("BaT comps daily call budget reached \u2014 cached results only until tomorrow.");
+  const url2 = `${API_BASE}/${endpoint}?${new URLSearchParams(params).toString()}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const response = await fetch(url2, { signal: controller.signal, headers: { "X-API-Key": apiKey(), Accept: "application/json" } });
+    if (!response.ok) throw new Error(`parse.bot HTTP ${response.status}`);
+    const payload = await response.json();
+    const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    callLog.set(today, (callLog.get(today) ?? 0) + 1);
+    cache.set(cacheKey2, { at: Date.now(), value: payload });
+    return payload;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+function slugify2(value) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+function normalize(value) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+async function resolveSlugs(make, modelFamily) {
+  try {
+    const directory = await callEndpoint("get_makes_and_models_directory", {});
+    const entries = firstArrayDeep(directory) ?? [];
+    const makeKey = normalize(make);
+    const familyKey = normalize(modelFamily);
+    for (const entry of entries) {
+      const object2 = asObject(entry);
+      if (!object2) continue;
+      const entryMake = stringAt(object2, ["make", "make_name", "brand"]);
+      const entryModel = stringAt(object2, ["model", "model_name", "name"]);
+      if (!entryMake || !entryModel) continue;
+      if (normalize(entryMake) !== makeKey) continue;
+      const modelKey = normalize(entryModel);
+      if (modelKey === familyKey || modelKey.includes(familyKey) || familyKey.includes(modelKey)) {
+        return {
+          makeSlug: stringAt(object2, ["make_slug"]) ?? slugify2(entryMake),
+          modelSlug: stringAt(object2, ["model_slug", "slug"]) ?? slugify2(entryModel)
+        };
+      }
+    }
+  } catch {
+  }
+  return { makeSlug: slugify2(make), modelSlug: slugify2(modelFamily) };
+}
+async function fetchBatComps(make, modelFamily, windowYears = 1) {
+  if (!parseBotConfigured()) return { configured: false };
+  const { makeSlug, modelSlug } = await resolveSlugs(make, modelFamily);
+  const base = {
+    configured: true,
+    make,
+    model: modelFamily,
+    windowYears,
+    source: "Bring a Trailer via parse.bot"
+  };
+  let trendsPayload;
+  let resultsPayload;
+  try {
+    trendsPayload = await callEndpoint("get_price_trends", {
+      make: makeSlug,
+      model: modelSlug,
+      years: String(windowYears)
+    });
+  } catch (error48) {
+    return { ...base, matched: false, recentSales: [], error: error48 instanceof Error ? error48.message : "price trends unavailable" };
+  }
+  try {
+    resultsPayload = await callEndpoint("get_model_auction_results", { make: makeSlug, model: modelSlug, page: "1" });
+  } catch {
+    resultsPayload = void 0;
+  }
+  const trends = asObject(trendsPayload);
+  const stats = asObject(path(trendsPayload, "stats")) ?? asObject(path(trendsPayload, "trends")) ?? trends;
+  const sampleCount = numberAt(stats ?? {}, ["count", "sample_size", "num_results", "total"]);
+  const medianSold = numberAt(stats ?? {}, ["median", "median_price", "median_sold_price"]);
+  const averageSold = numberAt(stats ?? {}, ["average", "average_price", "avg", "mean"]);
+  const minSold = numberAt(stats ?? {}, ["min", "min_price", "low"]);
+  const maxSold = numberAt(stats ?? {}, ["max", "max_price", "high"]);
+  const recentSales = [];
+  for (const row of firstArrayDeep(resultsPayload) ?? []) {
+    const object2 = asObject(row);
+    if (!object2) continue;
+    const title = stringAt(object2, ["title", "heading", "name"]);
+    if (!title) continue;
+    recentSales.push({
+      title,
+      soldPrice: numberAt(object2, ["sold_price", "sale_price", "price", "final_bid", "hammer_price"]),
+      date: stringAt(object2, ["sold_date", "sale_date", "end_date", "date", "ended_at"]),
+      url: stringAt(object2, ["url", "link", "listing_url"])
+    });
+    if (recentSales.length >= 6) break;
+  }
+  const matched = sampleCount != null || medianSold != null || recentSales.length > 0;
+  return {
+    ...base,
+    matched,
+    sampleCount,
+    medianSold,
+    averageSold,
+    minSold,
+    maxSold,
+    recentSales,
+    error: matched ? void 0 : "No BaT results matched this model slug."
+  };
+}
+
+// api/providers/marketcheck.ts
+var API_BASE2 = "https://api.marketcheck.com/v2";
+var TIMEOUT_MS2 = 12e3;
+var HUB_ZIPS = ["90210", "33139", "75201", "10022", "85251", "60611", "30309", "77024"];
+function marketCheckConfigured() {
+  return Boolean(process.env.MARKETCHECK_API_KEY?.trim());
+}
+function apiKey2() {
+  const key = process.env.MARKETCHECK_API_KEY?.trim();
+  if (!key) throw new Error("MARKETCHECK_API_KEY is not configured on the server.");
+  return key;
+}
+function asObject2(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : void 0;
+}
+function path2(source, dottedPath) {
+  return dottedPath.split(".").reduce((current, key) => asObject2(current)?.[key], source);
+}
+function stringAt2(source, paths) {
+  for (const candidate of paths) {
+    const value = path2(source, candidate);
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return void 0;
+}
+function numberAt2(source, paths) {
+  for (const candidate of paths) {
+    const value = path2(source, candidate);
+    if (typeof value === "number" && Number.isFinite(value)) return Math.round(value);
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value.replace(/[$,]/g, ""));
+      if (Number.isFinite(parsed)) return Math.round(parsed);
+    }
+  }
+  return void 0;
+}
+function dateAt(source, paths) {
+  for (const candidate of paths) {
+    const value = path2(source, candidate);
+    if (typeof value === "string" && value.trim()) {
+      const parsed = new Date(value);
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+      const ms = value > 1e10 ? value : value * 1e3;
+      const parsed = new Date(ms);
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+  }
+  return void 0;
+}
+function firstArrayDeep2(value, depth = 0) {
+  if (depth > 3 || value == null) return void 0;
+  if (Array.isArray(value)) return value.length ? value : void 0;
+  const object2 = asObject2(value);
+  if (!object2) return void 0;
+  for (const key of ["listings", "points", "history", "results", "data"]) {
+    const found = firstArrayDeep2(object2[key], depth + 1);
+    if (found) return found;
+  }
+  return void 0;
+}
+async function getJson(url2) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS2);
+  try {
+    const response = await fetch(url2, { signal: controller.signal, headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error(`MarketCheck HTTP ${response.status}`);
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function fetchSellThroughRecents(params) {
+  const search = new URLSearchParams({
+    api_key: apiKey2(),
+    make: params.make,
+    zip: params.zip,
+    radius: String(Math.min(params.radiusMiles ?? 100, 100)),
+    rows: String(params.rows ?? 50),
+    start: "0"
+  });
+  if (params.model) search.set("model", params.model);
+  if (params.yearMin) search.set("year", `${params.yearMin}-${(/* @__PURE__ */ new Date()).getFullYear() + 1}`);
+  let payload;
+  try {
+    payload = await getJson(`${API_BASE2}/search/car/recents?${search.toString()}`);
+  } catch (error48) {
+    return { observations: [], warning: error48 instanceof Error ? error48.message : "MarketCheck recents request failed" };
+  }
+  const rows = firstArrayDeep2(payload) ?? [];
+  const observations = [];
+  for (const row of rows) {
+    const object2 = asObject2(row);
+    if (!object2) continue;
+    const make = stringAt2(object2, ["build.make", "make"]);
+    const model = stringAt2(object2, ["build.model", "model"]);
+    const title = stringAt2(object2, ["heading", "title", "name"]);
+    const externalId = stringAt2(object2, ["id", "listing_id", "vin"]);
+    if (!make || !model || !title || !externalId) continue;
+    const vin = stringAt2(object2, ["vin"])?.toUpperCase();
+    const listedAt = dateAt(object2, ["first_seen_at_date", "first_seen_at", "scraped_at_date", "listed_date"]);
+    const removedAt = dateAt(object2, ["last_seen_at_date", "last_seen_at", "expired_at_date", "delisted_date"]);
+    const daysOnMarket = numberAt2(object2, ["dom", "days_on_market", "dom_active"]);
+    const photos = path2(object2, "media.photo_links");
+    const photoList = Array.isArray(photos) ? photos.filter((item) => typeof item === "string") : [];
+    observations.push({
+      removedAt,
+      daysOnMarket,
+      listing: {
+        source: "marketcheck",
+        externalId: String(externalId),
+        vin,
+        year: numberAt2(object2, ["build.year", "year"]),
+        make,
+        model,
+        trim: stringAt2(object2, ["build.trim", "trim"]),
+        title,
+        price: numberAt2(object2, ["price", "price_value", "msrp"]),
+        mileage: numberAt2(object2, ["miles", "miles_value", "mileage"]),
+        exteriorColor: stringAt2(object2, ["exterior_color", "exterior_color_display"]),
+        interiorColor: stringAt2(object2, ["interior_color"]),
+        transmission: stringAt2(object2, ["build.transmission", "transmission"]),
+        drivetrain: stringAt2(object2, ["build.drivetrain", "drivetrain"]),
+        bodyStyle: stringAt2(object2, ["build.body_type", "body_type", "body_style"]),
+        sellerName: stringAt2(object2, ["seller_name", "dealer.name", "mc_dealership.name"]),
+        sellerType: stringAt2(object2, ["dealer_type", "seller_type", "inventory_type"]),
+        city: stringAt2(object2, ["city", "dealer.city"]),
+        state: stringAt2(object2, ["state", "dealer.state"]),
+        postalCode: stringAt2(object2, ["zip", "dealer.zip"]),
+        url: stringAt2(object2, ["vdp_url", "url", "listing_url"]),
+        imageUrl: photoList[0],
+        photoCount: photoList.length || void 0,
+        listedAt,
+        status: "unknown",
+        raw: { marketcheck: true, recent: true }
+      }
+    });
+  }
+  return { observations };
+}
+var HISTORY_CACHE_TTL_MS = 7 * 864e5;
+var historyCache = /* @__PURE__ */ new Map();
+async function fetchVinHistory(vin) {
+  if (!marketCheckConfigured()) return { configured: false };
+  const normalized = vin.trim().toUpperCase();
+  const cached3 = historyCache.get(normalized);
+  if (cached3 && Date.now() - cached3.at < HISTORY_CACHE_TTL_MS) return cached3.value;
+  let payload;
+  try {
+    payload = await getJson(`${API_BASE2}/history/car/${encodeURIComponent(normalized)}/points?api_key=${apiKey2()}`);
+  } catch {
+    const fallback = { configured: true, vin: normalized, points: [], source: "MarketCheck" };
+    historyCache.set(normalized, { at: Date.now(), value: fallback });
+    return fallback;
+  }
+  const rows = firstArrayDeep2(payload) ?? [];
+  const points = [];
+  for (const row of rows) {
+    const object2 = asObject2(row);
+    if (!object2) continue;
+    const date6 = dateAt(object2, ["date", "day", "listed_date", "observed_at"]);
+    if (!date6) continue;
+    points.push({
+      date: date6.toISOString().slice(0, 10),
+      price: numberAt2(object2, ["price", "price_value"]),
+      miles: numberAt2(object2, ["miles", "miles_value", "odometer"]),
+      event: stringAt2(object2, ["status", "event", "source"])
+    });
+  }
+  points.sort((a, b) => a.date.localeCompare(b.date));
+  const value = { configured: true, vin: normalized, points: points.slice(-40), source: "MarketCheck" };
+  historyCache.set(normalized, { at: Date.now(), value });
+  return value;
+}
+
 // contracts/highline.ts
 var HIGHLINE_SEARCHES = [
   { key: "ferrari-all", label: "All Ferrari", make: "Ferrari", family: "Ferrari" },
@@ -40638,25 +40986,25 @@ var HIGHLINE_MODEL_DEFINITIONS = [
 ];
 
 // api/providers/autoDev.ts
-var API_BASE = "https://api.auto.dev/listings";
+var API_BASE3 = "https://api.auto.dev/listings";
 var STARTER_PAGE_LIMIT = 20;
-function asObject(value) {
+function asObject3(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : void 0;
 }
-function path(source, dottedPath) {
-  return dottedPath.split(".").reduce((current, key) => asObject(current)?.[key], source);
+function path3(source, dottedPath) {
+  return dottedPath.split(".").reduce((current, key) => asObject3(current)?.[key], source);
 }
-function stringAt(source, paths) {
+function stringAt3(source, paths) {
   for (const candidate of paths) {
-    const value = path(source, candidate);
+    const value = path3(source, candidate);
     if (typeof value === "string" && value.trim()) return value.trim();
     if (typeof value === "number" && Number.isFinite(value)) return String(value);
   }
   return void 0;
 }
-function numberAt(source, paths) {
+function numberAt3(source, paths) {
   for (const candidate of paths) {
-    const value = path(source, candidate);
+    const value = path3(source, candidate);
     if (typeof value === "number" && Number.isFinite(value)) return Math.round(value);
     if (typeof value === "string" && value.trim()) {
       const parsed = Number(value.replace(/[$,]/g, ""));
@@ -40675,7 +41023,7 @@ function firstStringDeep(value, depth = 0) {
     }
     return void 0;
   }
-  const object2 = asObject(value);
+  const object2 = asObject3(value);
   if (!object2) return void 0;
   for (const key of ["url", "href", "src", "image", "photo", "original", "large"]) {
     const found = firstStringDeep(object2[key], depth + 1);
@@ -40695,9 +41043,9 @@ function stableId(input) {
   }
   return Math.abs(hash2).toString(36);
 }
-function dateAt(source, paths) {
+function dateAt2(source, paths) {
   for (const candidate of paths) {
-    const value = path(source, candidate);
+    const value = path3(source, candidate);
     if (typeof value === "string" && value.trim()) {
       const parsed = new Date(value.trim().replace(" ", "T"));
       if (!Number.isNaN(parsed.getTime())) return parsed;
@@ -40707,23 +41055,23 @@ function dateAt(source, paths) {
 }
 function booleanAt(source, paths) {
   for (const candidate of paths) {
-    const value = path(source, candidate);
+    const value = path3(source, candidate);
     if (typeof value === "boolean") return value;
   }
   return void 0;
 }
 function normalizeAutoDevListing(item) {
-  const vin = stringAt(item, ["vehicle.vin", "vin"]);
-  const year2 = numberAt(item, ["vehicle.year", "year"]);
-  const make = stringAt(item, ["vehicle.make", "make"]);
-  const model = stringAt(item, ["vehicle.model", "model"]);
-  const trim = stringAt(item, ["vehicle.trim", "vehicle.series", "trim", "series"]);
-  const price = numberAt(item, ["retailListing.price", "price", "listing.price", "marketplace.price"]);
-  const mileage = numberAt(item, ["retailListing.miles", "retailListing.mileage", "vehicle.mileage", "miles", "mileage"]);
+  const vin = stringAt3(item, ["vehicle.vin", "vin"]);
+  const year2 = numberAt3(item, ["vehicle.year", "year"]);
+  const make = stringAt3(item, ["vehicle.make", "make"]);
+  const model = stringAt3(item, ["vehicle.model", "model"]);
+  const trim = stringAt3(item, ["vehicle.trim", "vehicle.series", "trim", "series"]);
+  const price = numberAt3(item, ["retailListing.price", "price", "listing.price", "marketplace.price"]);
+  const mileage = numberAt3(item, ["retailListing.miles", "retailListing.mileage", "vehicle.mileage", "miles", "mileage"]);
   if (!make || !model || !price) return void 0;
   const titleParts = [year2, make, model, trim].filter(Boolean);
-  const title = stringAt(item, ["title", "listing.title", "retailListing.title"]) ?? titleParts.join(" ");
-  const externalId = stringAt(item, ["id", "_id", "listingId", "retailListing.id"]) ?? vin ?? stableId(`${title}-${price}-${mileage ?? ""}`);
+  const title = stringAt3(item, ["title", "listing.title", "retailListing.title"]) ?? titleParts.join(" ");
+  const externalId = stringAt3(item, ["id", "_id", "listingId", "retailListing.id"]) ?? vin ?? stableId(`${title}-${price}-${mileage ?? ""}`);
   return {
     source: "auto.dev",
     externalId,
@@ -40735,32 +41083,32 @@ function normalizeAutoDevListing(item) {
     title,
     price,
     mileage,
-    exteriorColor: stringAt(item, ["vehicle.exteriorColor", "vehicle.exterior_color", "exteriorColor", "retailListing.exteriorColor"]),
-    interiorColor: stringAt(item, ["vehicle.interiorColor", "vehicle.interior_color", "interiorColor", "retailListing.interiorColor"]),
-    transmission: stringAt(item, ["vehicle.transmission", "vehicle.transmissionType", "transmission"]),
-    drivetrain: stringAt(item, ["vehicle.drivetrain", "vehicle.driveType", "drivetrain"]),
-    bodyStyle: stringAt(item, ["vehicle.bodyStyle", "vehicle.bodyType", "bodyStyle"]),
-    sellerName: stringAt(item, ["retailListing.dealerName", "retailListing.dealer.name", "retailListing.dealer", "dealer.name", "seller.name"]),
-    sellerType: stringAt(item, ["retailListing.sellerType", "retailListing.dealerType", "seller.type"]) ?? "dealer",
-    city: stringAt(item, ["retailListing.city", "location.city", "dealer.city"]),
-    state: stringAt(item, ["retailListing.state", "location.state", "dealer.state"]),
-    postalCode: stringAt(item, ["retailListing.zip", "retailListing.postalCode", "location.zip", "dealer.zip"]),
-    url: stringAt(item, ["retailListing.vdp", "retailListing.url", "url", "listing.url", "links.self"]),
-    imageUrl: stringAt(item, ["retailListing.primaryImage"]) ?? firstStringDeep(path(item, "photos")) ?? firstStringDeep(path(item, "media")) ?? firstStringDeep(path(item, "images")),
-    description: stringAt(item, ["description", "retailListing.description", "vehicle.description"]),
-    listedAt: dateAt(item, ["createdAt", "retailListing.createdAt", "listedAt"]),
+    exteriorColor: stringAt3(item, ["vehicle.exteriorColor", "vehicle.exterior_color", "exteriorColor", "retailListing.exteriorColor"]),
+    interiorColor: stringAt3(item, ["vehicle.interiorColor", "vehicle.interior_color", "interiorColor", "retailListing.interiorColor"]),
+    transmission: stringAt3(item, ["vehicle.transmission", "vehicle.transmissionType", "transmission"]),
+    drivetrain: stringAt3(item, ["vehicle.drivetrain", "vehicle.driveType", "drivetrain"]),
+    bodyStyle: stringAt3(item, ["vehicle.bodyStyle", "vehicle.bodyType", "bodyStyle"]),
+    sellerName: stringAt3(item, ["retailListing.dealerName", "retailListing.dealer.name", "retailListing.dealer", "dealer.name", "seller.name"]),
+    sellerType: stringAt3(item, ["retailListing.sellerType", "retailListing.dealerType", "seller.type"]) ?? "dealer",
+    city: stringAt3(item, ["retailListing.city", "location.city", "dealer.city"]),
+    state: stringAt3(item, ["retailListing.state", "location.state", "dealer.state"]),
+    postalCode: stringAt3(item, ["retailListing.zip", "retailListing.postalCode", "location.zip", "dealer.zip"]),
+    url: stringAt3(item, ["retailListing.vdp", "retailListing.url", "url", "listing.url", "links.self"]),
+    imageUrl: stringAt3(item, ["retailListing.primaryImage"]) ?? firstStringDeep(path3(item, "photos")) ?? firstStringDeep(path3(item, "media")) ?? firstStringDeep(path3(item, "images")),
+    description: stringAt3(item, ["description", "retailListing.description", "vehicle.description"]),
+    listedAt: dateAt2(item, ["createdAt", "retailListing.createdAt", "listedAt"]),
     cpo: booleanAt(item, ["retailListing.cpo", "cpo"]),
-    photoCount: numberAt(item, ["retailListing.photoCount", "photoCount"]),
-    carfaxUrl: stringAt(item, ["retailListing.carfaxUrl", "carfaxUrl", "history.carfaxUrl"]),
-    accidentCount: numberAt(item, ["history.accidentCount", "accidentCount"]),
-    ownerCount: numberAt(item, ["history.ownerCount", "ownerCount"]),
-    usageType: stringAt(item, ["history.usageType", "usageType"]),
+    photoCount: numberAt3(item, ["retailListing.photoCount", "photoCount"]),
+    carfaxUrl: stringAt3(item, ["retailListing.carfaxUrl", "carfaxUrl", "history.carfaxUrl"]),
+    accidentCount: numberAt3(item, ["history.accidentCount", "accidentCount"]),
+    ownerCount: numberAt3(item, ["history.ownerCount", "ownerCount"]),
+    usageType: stringAt3(item, ["history.usageType", "usageType"]),
     status: "active",
     raw: item
   };
 }
 var MAX_PAGES_PER_SEARCH = 6;
-async function fetchSearchPage(apiKey, search, page) {
+async function fetchSearchPage(apiKey3, search, page) {
   const params = new URLSearchParams({
     limit: String(STARTER_PAGE_LIMIT),
     page: String(page),
@@ -40768,9 +41116,9 @@ async function fetchSearchPage(apiKey, search, page) {
     "vehicle.make": search.make
   });
   if (search.model) params.set("vehicle.model", search.model);
-  const response = await fetch(`${API_BASE}?${params.toString()}`, {
+  const response = await fetch(`${API_BASE3}?${params.toString()}`, {
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${apiKey3}`,
       Accept: "application/json"
     }
   });
@@ -40786,10 +41134,10 @@ function autoDevConfigured() {
   return Boolean(process.env.AUTO_DEV_API_KEY?.trim());
 }
 async function decodeVinWithAutoDev(vin) {
-  const apiKey = process.env.AUTO_DEV_API_KEY?.trim();
-  if (!apiKey) throw new Error("AUTO_DEV_API_KEY is not configured on the server.");
+  const apiKey3 = process.env.AUTO_DEV_API_KEY?.trim();
+  if (!apiKey3) throw new Error("AUTO_DEV_API_KEY is not configured on the server.");
   const response = await fetch(`https://api.auto.dev/vin/${encodeURIComponent(vin)}`, {
-    headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+    headers: { Authorization: `Bearer ${apiKey3}`, Accept: "application/json" },
     signal: AbortSignal.timeout(12e3)
   });
   if (!response.ok) throw new Error(`Auto.dev VIN decode failed with HTTP ${response.status}`);
@@ -40814,8 +41162,8 @@ async function decodeVinWithAutoDev(vin) {
   };
 }
 async function fetchAutoDevListings() {
-  const apiKey = process.env.AUTO_DEV_API_KEY?.trim();
-  if (!apiKey) {
+  const apiKey3 = process.env.AUTO_DEV_API_KEY?.trim();
+  if (!apiKey3) {
     return {
       provider: "auto.dev",
       listings: [],
@@ -40837,7 +41185,7 @@ async function fetchAutoDevListings() {
     };
     try {
       for (let page = 1; page <= MAX_PAGES_PER_SEARCH; page += 1) {
-        const rows = await fetchSearchPage(apiKey, search, page);
+        const rows = await fetchSearchPage(apiKey3, search, page);
         for (const listing of rows) {
           const key = listing.vin ?? listing.externalId;
           completion.externalIds.push(listing.externalId);
@@ -40859,12 +41207,12 @@ async function fetchAutoDevListings() {
 }
 
 // api/services/matching.ts
-function normalize(value) {
+function normalize2(value) {
   return (value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/²/g, "2").replace(/[^a-z0-9]+/g, " ").trim();
 }
 function sameMake(listingMake, supportedMake) {
-  const listing = normalize(listingMake);
-  const supported = normalize(supportedMake);
+  const listing = normalize2(listingMake);
+  const supported = normalize2(supportedMake);
   if (listing === supported) return true;
   if (supported === "mercedes benz") return listing.includes("mercedes");
   return listing.includes(supported) || supported.includes(listing);
@@ -40878,28 +41226,28 @@ function inYearRange(year2, model) {
 function modelScope(listing, model) {
   if (!sameMake(listing.make, model.make)) return false;
   if (model.modelFamily === "911") {
-    return normalize(`${listing.model} ${listing.trim} ${listing.title}`).includes("911");
+    return normalize2(`${listing.model} ${listing.trim} ${listing.title}`).includes("911");
   }
   if (model.modelFamily === "G-Class") {
-    const text2 = normalize(`${listing.model} ${listing.trim} ${listing.title}`);
+    const text2 = normalize2(`${listing.model} ${listing.trim} ${listing.title}`);
     return text2.includes("g class") || text2.includes("g wagon") || /\bg (500|550|63|65)\b/.test(text2);
   }
   return true;
 }
 function matchSupportedModel(listing, models) {
-  const text2 = normalize(`${listing.title} ${listing.model} ${listing.trim}`);
+  const text2 = normalize2(`${listing.title} ${listing.model} ${listing.trim}`);
   let best;
   for (const model of models) {
     if (!modelScope(listing, model) || !inYearRange(listing.year, model)) continue;
-    const variant = normalize(model.variant);
+    const variant = normalize2(model.variant);
     let score = 0;
     if (variant && text2.includes(variant)) score += 120 + variant.length;
-    const terms = model.matchTerms.split(",").map((term) => normalize(term)).filter(Boolean);
+    const terms = model.matchTerms.split(",").map((term) => normalize2(term)).filter(Boolean);
     for (const term of terms) {
       if (term.length >= 2 && text2.includes(term)) score += Math.min(term.length, 18);
     }
     if (listing.year) score += 12;
-    if (model.generation && text2.includes(normalize(model.generation))) score += 12;
+    if (model.generation && text2.includes(normalize2(model.generation))) score += 12;
     if (!best || score > best.score) best = { model, score };
   }
   return best && best.score >= 18 ? best.model : void 0;
@@ -42218,7 +42566,7 @@ var QueryPromise = class {
 function mapResultRow(columns, row, joinsNotNullableMap) {
   const nullifyMap = {};
   const result = columns.reduce(
-    (result2, { path: path4, field }, columnIndex) => {
+    (result2, { path: path6, field }, columnIndex) => {
       let decoder;
       if (is(field, Column)) {
         decoder = field;
@@ -42230,8 +42578,8 @@ function mapResultRow(columns, row, joinsNotNullableMap) {
         decoder = field.sql.decoder;
       }
       let node = result2;
-      for (const [pathChunkIndex, pathChunk] of path4.entries()) {
-        if (pathChunkIndex < path4.length - 1) {
+      for (const [pathChunkIndex, pathChunk] of path6.entries()) {
+        if (pathChunkIndex < path6.length - 1) {
           if (!(pathChunk in node)) {
             node[pathChunk] = {};
           }
@@ -42239,8 +42587,8 @@ function mapResultRow(columns, row, joinsNotNullableMap) {
         } else {
           const rawValue = row[columnIndex];
           const value = node[pathChunk] = rawValue === null ? null : decoder.mapFromDriverValue(rawValue);
-          if (joinsNotNullableMap && is(field, Column) && path4.length === 2) {
-            const objectName = path4[0];
+          if (joinsNotNullableMap && is(field, Column) && path6.length === 2) {
+            const objectName = path6[0];
             if (!(objectName in nullifyMap)) {
               nullifyMap[objectName] = value === null ? getTableName(field.table) : false;
             } else if (typeof nullifyMap[objectName] === "string" && nullifyMap[objectName] !== getTableName(field.table)) {
@@ -46852,11 +47200,11 @@ async function hashQuery(sql2, params) {
 
 // node_modules/drizzle-orm/mysql-core/session.js
 var MySqlPreparedQuery = class {
-  constructor(cache, queryMetadata, cacheConfig) {
-    this.cache = cache;
+  constructor(cache2, queryMetadata, cacheConfig) {
+    this.cache = cache2;
     this.queryMetadata = queryMetadata;
     this.cacheConfig = cacheConfig;
-    if (cache && cache.strategy() === "all" && cacheConfig === void 0) {
+    if (cache2 && cache2.strategy() === "all" && cacheConfig === void 0) {
       this.cacheConfig = { enable: true, autoInvalidate: true };
     }
     if (!this.cacheConfig?.enable) {
@@ -47135,8 +47483,8 @@ var import_mysql2 = __toESM(require_mysql2(), 1);
 // node_modules/drizzle-orm/mysql2/session.js
 import { once as once2 } from "node:events";
 var MySql2PreparedQuery = class extends MySqlPreparedQuery {
-  constructor(client, queryString, params, logger, cache, queryMetadata, cacheConfig, fields, customResultMapper, generatedIds, returningIds) {
-    super(cache, queryMetadata, cacheConfig);
+  constructor(client, queryString, params, logger, cache2, queryMetadata, cacheConfig, fields, customResultMapper, generatedIds, returningIds) {
+    super(cache2, queryMetadata, cacheConfig);
     this.client = client;
     this.params = params;
     this.logger = logger;
@@ -47559,6 +47907,9 @@ function createDrizzleStore() {
     async findListingById(id) {
       return getDb().query.listings.findFirst({ where: eq(listings.id, id) });
     },
+    async findActiveListingByVin(vin) {
+      return getDb().query.listings.findFirst({ where: and(eq(listings.vin, vin), eq(listings.status, "active")) });
+    },
     async insertListing(values) {
       const [{ id }] = await getDb().insert(listings).values(values).$returningId();
       return id;
@@ -47677,6 +48028,9 @@ function createMemoryStore(tables) {
     },
     async findListingById(id) {
       return tables.listings.find((listing) => listing.id === id);
+    },
+    async findActiveListingByVin(vin) {
+      return tables.listings.find((listing) => listing.vin === vin && listing.status === "active");
     },
     async insertListing(values) {
       const now = /* @__PURE__ */ new Date();
@@ -48205,6 +48559,8 @@ async function refreshListingsFromAutoDev() {
       if (!search.exhausted) continue;
       expiredUnseen += await store.expireUnseenListings("auto.dev", search.make, search.model, search.externalIds);
     }
+    const sellThrough = await ingestMarketCheckSellThrough();
+    if (sellThrough.warnings.length) result.warnings.push(...sellThrough.warnings);
     await rebuildModelStats();
     const valuationsCreated = await rebuildValuations();
     const status = result.listings.length ? "completed" : result.warnings.length ? "failed" : "completed";
@@ -48225,6 +48581,7 @@ async function refreshListingsFromAutoDev() {
       listingsUpserted: upserted,
       listingsExpired: expiredUnseen,
       valuationsCreated,
+      sellThrough: sellThrough.configured ? { calls: sellThrough.calls, inserted: sellThrough.inserted, skippedStillActive: sellThrough.skippedStillActive } : null,
       warnings: result.warnings
     };
   } catch (error48) {
@@ -48236,6 +48593,86 @@ async function refreshListingsFromAutoDev() {
 async function latestIngestionRun(provider = "auto.dev") {
   const store = await getStore();
   return store.latestIngestionRun(provider);
+}
+async function ingestMarketCheckSellThrough() {
+  if (!marketCheckConfigured()) {
+    return { configured: false, calls: 0, inserted: 0, skippedExisting: 0, skippedStillActive: 0, warnings: [] };
+  }
+  const store = await getStore();
+  const models = await store.allSupportedModels();
+  const callsPerRefresh = Math.max(1, Math.min(Number(process.env.MARKETCHECK_REFRESH_CALLS) || 12, 40));
+  const pairs = models.flatMap((model) => HUB_ZIPS.map((zip) => ({ model, zip })));
+  const dayOfYear = Math.floor(Date.now() / 864e5);
+  const offset = dayOfYear * callsPerRefresh % pairs.length;
+  const slice = Array.from({ length: Math.min(callsPerRefresh, pairs.length) }, (_, index2) => pairs[(offset + index2) % pairs.length]);
+  const result = { configured: true, calls: 0, inserted: 0, skippedExisting: 0, skippedStillActive: 0, warnings: [] };
+  const now = /* @__PURE__ */ new Date();
+  for (const { model, zip } of slice) {
+    const { observations, warning } = await fetchSellThroughRecents({
+      make: model.searchMake,
+      model: model.searchModel ?? void 0,
+      yearMin: model.yearStart,
+      zip
+    });
+    result.calls += 1;
+    if (warning) {
+      result.warnings.push(`MarketCheck ${model.searchMake} @${zip}: ${warning}`);
+      continue;
+    }
+    for (const observation of observations) {
+      const listing = observation.listing;
+      const externalId = truncate(listing.externalId, 160);
+      const existing = await store.findListing("marketcheck", externalId);
+      if (existing) {
+        result.skippedExisting += 1;
+        continue;
+      }
+      if (listing.vin && await store.findActiveListingByVin(listing.vin)) {
+        result.skippedStillActive += 1;
+        continue;
+      }
+      const matched = matchSupportedModel(listing, models);
+      if (!matched) continue;
+      const removedAt = observation.removedAt ?? now;
+      const listedAt = listing.listedAt ?? (observation.daysOnMarket != null ? new Date(removedAt.getTime() - observation.daysOnMarket * 864e5) : void 0);
+      await store.insertListing({
+        source: "marketcheck",
+        externalId,
+        modelId: matched.id,
+        vin: truncate(listing.vin, 17),
+        year: listing.year,
+        make: truncate(listing.make, 80),
+        model: truncate(listing.model, 140),
+        trim: truncate(listing.trim, 180),
+        title: truncate(listing.title, 255),
+        price: listing.price,
+        mileage: listing.mileage,
+        exteriorColor: truncate(listing.exteriorColor, 80),
+        interiorColor: truncate(listing.interiorColor, 80),
+        transmission: truncate(listing.transmission, 100),
+        drivetrain: truncate(listing.drivetrain, 80),
+        bodyStyle: truncate(listing.bodyStyle, 80),
+        sellerName: truncate(listing.sellerName, 180),
+        sellerType: truncate(listing.sellerType, 60),
+        city: truncate(listing.city, 100),
+        state: truncate(listing.state, 40),
+        postalCode: truncate(listing.postalCode, 20),
+        url: listing.url,
+        imageUrl: listing.imageUrl,
+        photoCount: listing.photoCount,
+        listedAt,
+        status: "unknown",
+        firstSeenAt: listedAt ?? removedAt,
+        lastSeenAt: removedAt,
+        removedAt,
+        createdAt: now,
+        updatedAt: now,
+        raw: listing.raw
+      });
+      result.inserted += 1;
+    }
+  }
+  return result;
 }
 
 // api/queries/highline.ts
@@ -48270,6 +48707,11 @@ async function dashboardSummary() {
       configured,
       geography: "United States",
       mode: configured ? "live-ready" : "demo / awaiting API key"
+    },
+    integrations: {
+      autoDev: configured,
+      marketCheck: marketCheckConfigured(),
+      parseBotBat: parseBotConfigured()
     },
     persistence: {
       mode: store.mode,
@@ -48429,7 +48871,7 @@ async function listingDetail(id) {
 }
 
 // api/services/bootstrap.ts
-import path2 from "node:path";
+import path4 from "node:path";
 
 // node_modules/drizzle-orm/migrator.js
 import crypto3 from "node:crypto";
@@ -48687,7 +49129,7 @@ async function prepare() {
   let store = await getStore();
   if (store.mode === "database") {
     try {
-      await migrate(getDb(), { migrationsFolder: path2.resolve(process.cwd(), "db/migrations") });
+      await migrate(getDb(), { migrationsFolder: path4.resolve(process.cwd(), "db/migrations") });
       await store.allSupportedModels();
     } catch (error48) {
       forceMemoryMode(error48 instanceof Error ? error48.message : "database initialization failed");
@@ -48922,7 +49364,20 @@ var highlineRouter = createRouter({
     }
     return refreshListingsFromAutoDev();
   }),
-  decodeVin: publicQuery.input(external_exports.object({ vin: external_exports.string().min(17).max(17) })).query(({ input }) => buildVinReport(input.vin))
+  decodeVin: publicQuery.input(external_exports.object({ vin: external_exports.string().min(17).max(17) })).query(({ input }) => buildVinReport(input.vin)),
+  /** Bring a Trailer sold-price comps for a tracked model (parse.bot, cached 24h). */
+  batComps: publicQuery.input(external_exports.object({ modelId: external_exports.number().int().positive() })).query(async ({ input }) => {
+    await ensureHighlineReady();
+    const store = await getStore();
+    const model = await store.findSupportedModelById(input.modelId);
+    if (!model) throw new Error("Unknown model");
+    return fetchBatComps(model.make, model.modelFamily, 1);
+  }),
+  /** MarketCheck six-year per-VIN listing history (price/mileage points). */
+  vinHistory: publicQuery.input(external_exports.object({ vin: external_exports.string().min(17).max(17) })).query(async ({ input }) => {
+    await ensureHighlineReady();
+    return fetchVinHistory(input.vin);
+  })
 });
 
 // api/router.ts
@@ -48972,10 +49427,10 @@ if (env.isProduction && !process.env.VERCEL) {
 var listener = getRequestListener(boot_default.fetch);
 function handler(req, res) {
   const incoming = new URL(req.url ?? "/", "http://localhost");
-  const path4 = incoming.searchParams.get("__path");
-  if (path4) {
+  const path6 = incoming.searchParams.get("__path");
+  if (path6) {
     incoming.searchParams.delete("__path");
-    req.url = `/api/${path4}${incoming.search}`;
+    req.url = `/api/${path6}${incoming.search}`;
   }
   return listener(req, res);
 }

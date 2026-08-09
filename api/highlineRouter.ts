@@ -1,8 +1,11 @@
 import { z } from "zod";
 import { createRouter, publicQuery } from "./middleware";
+import { fetchBatComps } from "./providers/batComps";
+import { fetchVinHistory } from "./providers/marketcheck";
 import { dashboardSummary, dealRadar, listingDetail, listSupportedModels, marketStats } from "./queries/highline";
 import { ensureHighlineReady } from "./services/bootstrap";
 import { latestIngestionRun, refreshListingsFromAutoDev } from "./services/ingestion";
+import { getStore } from "./services/store";
 import { buildVinReport } from "./services/vinIntel";
 
 const actionSchema = z.enum(["pursue", "inspect", "negotiate", "pass"]);
@@ -76,4 +79,19 @@ export const highlineRouter = createRouter({
   }),
 
   decodeVin: publicQuery.input(z.object({ vin: z.string().min(17).max(17) })).query(({ input }) => buildVinReport(input.vin)),
+
+  /** Bring a Trailer sold-price comps for a tracked model (parse.bot, cached 24h). */
+  batComps: publicQuery.input(z.object({ modelId: z.number().int().positive() })).query(async ({ input }) => {
+    await ensureHighlineReady();
+    const store = await getStore();
+    const model = await store.findSupportedModelById(input.modelId);
+    if (!model) throw new Error("Unknown model");
+    return fetchBatComps(model.make, model.modelFamily, 1);
+  }),
+
+  /** MarketCheck six-year per-VIN listing history (price/mileage points). */
+  vinHistory: publicQuery.input(z.object({ vin: z.string().min(17).max(17) })).query(async ({ input }) => {
+    await ensureHighlineReady();
+    return fetchVinHistory(input.vin);
+  }),
 });

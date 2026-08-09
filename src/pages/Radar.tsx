@@ -206,6 +206,23 @@ function ProviderPanel({ refresh }: { refresh: () => void }) {
                 Persistence: {persistence.label}
               </p>
             ) : null}
+            {summary.data?.integrations && (
+              <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                {([
+                  ['Auto.dev · listings', summary.data.integrations.autoDev],
+                  ['MarketCheck · sell-through', summary.data.integrations.marketCheck],
+                  ['BaT · sold comps', summary.data.integrations.parseBotBat],
+                ] as const).map(([label, on]) => (
+                  <span
+                    key={label}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 ${on ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-300' : 'border-white/[0.08] bg-white/[0.04] text-slate-500'}`}
+                  >
+                    <span className={`h-1.5 w-1.5 rounded-full ${on ? 'bg-emerald-300' : 'bg-slate-600'}`} />
+                    {label}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
         <button type="button" onClick={refresh} className="luxury-button shrink-0 justify-center px-5 py-3">
@@ -435,6 +452,10 @@ function DetailPanel({ id, onClose }: { id: number; onClose: () => void }) {
   const detail = trpc.highline.listing.useQuery({ id })
   const data = detail.data
   const valuation = data?.valuations?.[0]
+  const modelId = data?.supportedModel?.id
+  const batComps = trpc.highline.batComps.useQuery({ modelId: modelId ?? 0 }, { enabled: Boolean(modelId), staleTime: 300_000 })
+  const vin = data?.vin && data.vin.length === 17 ? data.vin : undefined
+  const vinHistory = trpc.highline.vinHistory.useQuery({ vin: vin ?? '' }, { enabled: Boolean(vin), staleTime: 300_000 })
 
   return (
     <aside className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-auto rounded-[2rem] border border-white/[0.08] bg-[#0d0d10] p-6 shadow-[0_30px_100px_rgba(0,0,0,0.42)]">
@@ -536,6 +557,58 @@ function DetailPanel({ id, onClose }: { id: number; onClose: () => void }) {
               ))}
             </div>
           </div>
+
+          {batComps.data?.configured === true && batComps.data.matched && (
+            <div className="rounded-2xl border border-[#d7b56d]/20 bg-[#d7b56d]/[0.05] p-4">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-[#f0d692]">
+                Sold comps · Bring a Trailer ({batComps.data.windowYears}yr)
+              </h3>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-xl bg-black/25 p-2.5">
+                  <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Median sold</p>
+                  <p className="mt-1 text-sm font-semibold text-white">{money(batComps.data.medianSold)}</p>
+                </div>
+                <div className="rounded-xl bg-black/25 p-2.5">
+                  <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Average</p>
+                  <p className="mt-1 text-sm font-semibold text-white">{money(batComps.data.averageSold)}</p>
+                </div>
+                <div className="rounded-xl bg-black/25 p-2.5">
+                  <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Sales</p>
+                  <p className="mt-1 text-sm font-semibold text-white">{batComps.data.sampleCount ?? '—'}</p>
+                </div>
+              </div>
+              {batComps.data.recentSales.length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                  {batComps.data.recentSales.map((sale, index) => (
+                    <div key={index} className="flex items-center justify-between gap-3 rounded-xl bg-black/25 px-3 py-2 text-xs">
+                      <span className="min-w-0 truncate text-slate-400">{sale.title}</span>
+                      <span className="shrink-0 font-medium text-white">
+                        {money(sale.soldPrice)}
+                        {sale.date ? <span className="ml-1.5 text-slate-500">{sale.date.slice(0, 10)}</span> : null}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="mt-3 text-[10px] text-slate-600">Actual auction transact prices · {batComps.data.source}</p>
+            </div>
+          )}
+
+          {vinHistory.data?.configured === true && vinHistory.data.points.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-400">This VIN's listing history</h3>
+              <div className="mt-3 space-y-1.5">
+                {[...vinHistory.data.points].slice(-6).reverse().map((point) => (
+                  <div key={point.date} className="flex items-center justify-between gap-3 rounded-xl bg-white/[0.035] px-3 py-2 text-xs">
+                    <span className="text-slate-500">{point.date}</span>
+                    <span className="font-medium text-white">{money(point.price)}</span>
+                    <span className="text-slate-500">{point.miles != null ? `${miles(point.miles)} mi` : ''}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-[10px] text-slate-600">Price/mileage each time this VIN was listed · {vinHistory.data.source}</p>
+            </div>
+          )}
 
           {data.url && (
             <a href={data.url} target="_blank" rel="noreferrer" className="luxury-button w-full justify-center px-5 py-3">
@@ -651,7 +724,7 @@ function RadarBody() {
           Refresh result: <strong className="text-white">{refresh.data.status}</strong>
           {refresh.data.warnings?.length
             ? ` · ${refresh.data.warnings[0]}`
-            : ` · ${refresh.data.listingsUpserted} listings upserted${'listingsExpired' in refresh.data && refresh.data.listingsExpired ? ` · ${refresh.data.listingsExpired} left the market (likely sold)` : ''}`}
+            : ` · ${refresh.data.listingsUpserted} listings upserted${'listingsExpired' in refresh.data && refresh.data.listingsExpired ? ` · ${refresh.data.listingsExpired} left the market (likely sold)` : ''}${'sellThrough' in refresh.data && refresh.data.sellThrough ? ` · ${refresh.data.sellThrough.inserted} sell-through obs from MarketCheck` : ''}`}
         </div>
       )}
 

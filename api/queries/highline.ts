@@ -1,4 +1,6 @@
 import { autoDevConfigured } from "../providers/autoDev";
+import { parseBotConfigured } from "../providers/batComps";
+import { marketCheckConfigured } from "../providers/marketcheck";
 import { latestIngestionRun } from "../services/ingestion";
 import { getStore } from "../services/store";
 
@@ -59,6 +61,11 @@ export async function dashboardSummary() {
       configured,
       geography: "United States",
       mode: configured ? "live-ready" : "demo / awaiting API key",
+    },
+    integrations: {
+      autoDev: configured,
+      marketCheck: marketCheckConfigured(),
+      parseBotBat: parseBotConfigured(),
     },
     persistence: {
       mode: store.mode,

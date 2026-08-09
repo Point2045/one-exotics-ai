@@ -139,6 +139,11 @@ export async function fetchSellThroughRecents(params: {
   for (const row of rows) {
     const object = asObject(row);
     if (!object) continue;
+    // Recents mix still-active and delisted inventory. MarketCheck crawls dealer feeds
+    // roughly daily, so a listing unseen for 3+ days has effectively left the market;
+    // anything fresher is still for sale and must not become a false sell-through row.
+    const removedAt = dateAt(object, ["last_seen_at_date", "last_seen_at", "expired_at_date", "delisted_date"]);
+    if (!removedAt || Date.now() - removedAt.getTime() < 3 * 86_400_000) continue;
     const make = stringAt(object, ["build.make", "make"]);
     const model = stringAt(object, ["build.model", "model"]);
     const title = stringAt(object, ["heading", "title", "name"]);
@@ -147,7 +152,6 @@ export async function fetchSellThroughRecents(params: {
 
     const vin = stringAt(object, ["vin"])?.toUpperCase();
     const listedAt = dateAt(object, ["first_seen_at_date", "first_seen_at", "scraped_at_date", "listed_date"]);
-    const removedAt = dateAt(object, ["last_seen_at_date", "last_seen_at", "expired_at_date", "delisted_date"]);
     const daysOnMarket = numberAt(object, ["dom", "days_on_market", "dom_active"]);
     const photos = path(object, "media.photo_links");
     const photoList = Array.isArray(photos) ? photos.filter((item): item is string => typeof item === "string") : [];
@@ -203,7 +207,7 @@ export async function fetchVinHistory(vin: string): Promise<VinHistory> {
 
   let payload: unknown;
   try {
-    payload = await getJson(`${API_BASE}/history/car/${encodeURIComponent(normalized)}/points?api_key=${apiKey()}`);
+    payload = await getJson(`${API_BASE}/history/car/${encodeURIComponent(normalized)}?api_key=${apiKey()}`);
   } catch {
     // History is a nice-to-have overlay — degrade silently rather than break the detail panel.
     const fallback: VinHistory = { configured: true, vin: normalized, points: [], source: "MarketCheck" };
@@ -211,18 +215,27 @@ export async function fetchVinHistory(vin: string): Promise<VinHistory> {
     return fallback;
   }
 
-  const rows = firstArrayDeep(payload) ?? [];
+  // History entries are listing episodes (one per dealer feed), often syndicated
+  // duplicates of the same car — collapse by mileage + month before returning.
+  const rows = firstArrayDeep(payload) ?? (Array.isArray(payload) ? payload : []);
+  const seenEpisodes = new Set<string>();
   const points: VinHistoryPoint[] = [];
   for (const row of rows) {
     const object = asObject(row);
     if (!object) continue;
-    const date = dateAt(object, ["date", "day", "listed_date", "observed_at"]);
+    const date = dateAt(object, ["first_seen_at_date", "first_seen_at", "scraped_at_date", "scraped_at"]);
     if (!date) continue;
+    const miles = numberAt(object, ["miles", "miles_value", "odometer"]);
+    const dedupeKey = `${miles ?? "?"}-${date.toISOString().slice(0, 7)}`;
+    if (seenEpisodes.has(dedupeKey)) continue;
+    seenEpisodes.add(dedupeKey);
+    const seller = stringAt(object, ["seller_name"]);
+    const where = [stringAt(object, ["city"]), stringAt(object, ["state"])].filter(Boolean).join(", ");
     points.push({
       date: date.toISOString().slice(0, 10),
-      price: numberAt(object, ["price", "price_value"]),
-      miles: numberAt(object, ["miles", "miles_value", "odometer"]),
-      event: stringAt(object, ["status", "event", "source"]),
+      price: numberAt(object, ["price", "price_value", "ref_price"]),
+      miles,
+      event: [seller, where].filter(Boolean).join(" · ") || undefined,
     });
   }
   points.sort((a, b) => a.date.localeCompare(b.date));

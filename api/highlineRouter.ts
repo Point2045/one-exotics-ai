@@ -86,7 +86,7 @@ export const highlineRouter = createRouter({
     const store = await getStore();
     const model = await store.findSupportedModelById(input.modelId);
     if (!model) throw new Error("Unknown model");
-    return fetchBatComps(model.make, model.modelFamily, 1);
+    return fetchBatComps(model.make, model.modelFamily, { searchModel: model.searchModel, variant: model.variant, windowYears: 1 });
   }),
 
   /** MarketCheck six-year per-VIN listing history (price/mileage points). */

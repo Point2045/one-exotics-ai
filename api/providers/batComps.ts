@@ -5,6 +5,12 @@
  * This is sold-price ground truth: what enthusiast/exotic cars actually transacted
  * for at auction, versus the asking prices everywhere else. Calls are cached for
  * 24h and daily-capped so a free key survives the month.
+ *
+ * Verified payload shapes (2026-08):
+ *   get_makes_and_models_directory → { data: { makes: [{ make, models: [{ name, slug, url }] }] } }
+ *   get_price_trends?make&model&years → { data: { count, min, max, avg, median } } (422 on unknown slug)
+ *   get_model_auction_results?make&model&page → { data: { items: [{ title, url, current_bid,
+ *     current_bid_label, sold_text, timestamp_end, active, ... }] } }
  */
 
 type JsonObject = Record<string, unknown>;
@@ -59,7 +65,7 @@ function firstArrayDeep(value: unknown, depth = 0): unknown[] | undefined {
   if (Array.isArray(value)) return value.length ? value : undefined;
   const object = asObject(value);
   if (!object) return undefined;
-  for (const key of ["results", "auctions", "listings", "data", "models", "makes", "sales", "points", "items"]) {
+  for (const key of ["items", "results", "auctions", "listings", "data", "models", "makes", "sales", "points"]) {
     const found = firstArrayDeep(object[key], depth + 1);
     if (found) return found;
   }
@@ -104,45 +110,74 @@ async function callEndpoint<T>(endpoint: string, params: Record<string, string>)
 
 // --- Slug resolution --------------------------------------------------------
 
+function foldAccents(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
 function slugify(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return foldAccents(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
+/** Accent-folded lowercase alphanumeric — "Huracán EVO" → "huracanevo". */
 function normalize(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return foldAccents(value).toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-/** Resolve our make/modelFamily to BaT's slugs via the directory, falling back to plain slugification. */
-async function resolveSlugs(make: string, modelFamily: string): Promise<{ makeSlug: string; modelSlug: string }> {
+/** Strip a leading make from a model name: "Ferrari 488" with make "Ferrari" → "488". */
+function stripMake(modelName: string, makeName: string): string {
+  const modelKey = normalize(modelName);
+  const makeKey = normalize(makeName);
+  return makeKey && modelKey.startsWith(makeKey) ? modelKey.slice(makeKey.length) : modelKey;
+}
+
+/**
+ * Resolve our model to BaT's make/model slugs via the directory.
+ * Our taxonomy folds the model into `variant` for Ferrari/Lamborghini/Aston Martin
+ * (modelFamily == make there), so candidates are tried in order:
+ * modelFamily (when distinct) → variant's first word → searchModel → full variant.
+ */
+async function resolveSlugs(make: string, candidates: string[]): Promise<{ makeSlug: string; modelSlug: string }> {
+  const usable = [...new Set(candidates.map((c) => c?.trim()).filter((c): c is string => Boolean(c)))];
   try {
     const directory = await callEndpoint<unknown>("get_makes_and_models_directory", {});
-    const entries = firstArrayDeep(directory) ?? [];
+    const makes = firstArrayDeep(path(directory, "data")) ?? firstArrayDeep(directory) ?? [];
     const makeKey = normalize(make);
-    const familyKey = normalize(modelFamily);
-    for (const entry of entries) {
-      const object = asObject(entry);
-      if (!object) continue;
-      const entryMake = stringAt(object, ["make", "make_name", "brand"]);
-      const entryModel = stringAt(object, ["model", "model_name", "name"]);
-      if (!entryMake || !entryModel) continue;
-      if (normalize(entryMake) !== makeKey) continue;
-      const modelKey = normalize(entryModel);
-      if (modelKey === familyKey || modelKey.includes(familyKey) || familyKey.includes(modelKey)) {
-        return {
-          makeSlug: stringAt(object, ["make_slug"]) ?? slugify(entryMake),
-          modelSlug: stringAt(object, ["model_slug", "slug"]) ?? slugify(entryModel),
-        };
+    for (const makeEntry of makes) {
+      const makeObject = asObject(makeEntry);
+      if (!makeObject) continue;
+      const entryMake = stringAt(makeObject, ["make", "make_name", "brand", "name"]);
+      if (!entryMake) continue;
+      const entryMakeKey = normalize(entryMake);
+      if (entryMakeKey !== makeKey && !entryMakeKey.includes(makeKey) && !makeKey.includes(entryMakeKey)) continue;
+
+      const models = Array.isArray(makeObject.models) ? makeObject.models : [];
+      for (const candidate of usable) {
+        const candidateKey = normalize(candidate);
+        for (const modelEntry of models) {
+          const modelObject = asObject(modelEntry);
+          if (!modelObject) continue;
+          const modelName = stringAt(modelObject, ["name", "model", "model_name"]);
+          if (!modelName) continue;
+          const modelKey = stripMake(modelName, entryMake);
+          if (modelKey === candidateKey || modelKey.includes(candidateKey) || candidateKey.includes(modelKey)) {
+            return {
+              makeSlug: slugify(entryMake),
+              modelSlug: stringAt(modelObject, ["slug"]) ?? slugify(modelName),
+            };
+          }
+        }
       }
     }
   } catch {
     // Directory is an optimization — plain slugs cover most mainstream exotic models.
   }
-  return { makeSlug: slugify(make), modelSlug: slugify(modelFamily) };
+  const fallback = usable[0] ?? make;
+  return { makeSlug: slugify(make), modelSlug: slugify(fallback) };
 }
 
 // --- Public API -------------------------------------------------------------
 
-export type BatRecentSale = { title: string; soldPrice?: number; date?: string; url?: string };
+export type BatRecentSale = { title: string; soldPrice?: number; date?: string; url?: string; result?: "sold" | "bid to" };
 
 export type BatComps =
   | {
@@ -150,6 +185,7 @@ export type BatComps =
       matched: boolean;
       make: string;
       model: string;
+      baTModel?: string;
       windowYears: number;
       sampleCount?: number;
       medianSold?: number;
@@ -166,14 +202,28 @@ export type BatComps =
  * Sold-price stats + recent auction results for one tracked model.
  * Costs 2 parse.bot calls per uncached lookup (trends + results); cached 24h after that.
  */
-export async function fetchBatComps(make: string, modelFamily: string, windowYears = 1): Promise<BatComps> {
+export async function fetchBatComps(
+  make: string,
+  modelFamily: string,
+  opts: { searchModel?: string | null; variant?: string; windowYears?: number } = {},
+): Promise<BatComps> {
   if (!parseBotConfigured()) return { configured: false };
 
-  const { makeSlug, modelSlug } = await resolveSlugs(make, modelFamily);
+  const windowYears = opts.windowYears ?? 1;
+  const variantFirstWord = opts.variant?.split(/\s+/)[0];
+  const candidates = [
+    modelFamily.toLowerCase() !== make.toLowerCase() ? modelFamily : undefined,
+    variantFirstWord,
+    opts.searchModel ?? undefined,
+    opts.variant,
+  ].filter((candidate): candidate is string => Boolean(candidate));
+
+  const { makeSlug, modelSlug } = await resolveSlugs(make, candidates);
   const base = {
     configured: true as const,
     make,
-    model: modelFamily,
+    model: modelFamily.toLowerCase() !== make.toLowerCase() ? modelFamily : (opts.variant ?? modelFamily),
+    baTModel: modelSlug,
     windowYears,
     source: "Bring a Trailer via parse.bot",
   };
@@ -195,11 +245,10 @@ export async function fetchBatComps(make: string, modelFamily: string, windowYea
     resultsPayload = undefined; // Trends alone are still useful.
   }
 
-  const trends = asObject(trendsPayload);
-  const stats = asObject(path(trendsPayload, "stats")) ?? asObject(path(trendsPayload, "trends")) ?? trends;
+  const stats = asObject(path(trendsPayload, "data")) ?? asObject(trendsPayload);
   const sampleCount = numberAt(stats ?? {}, ["count", "sample_size", "num_results", "total"]);
   const medianSold = numberAt(stats ?? {}, ["median", "median_price", "median_sold_price"]);
-  const averageSold = numberAt(stats ?? {}, ["average", "average_price", "avg", "mean"]);
+  const averageSold = numberAt(stats ?? {}, ["avg", "average", "average_price", "mean"]);
   const minSold = numberAt(stats ?? {}, ["min", "min_price", "low"]);
   const maxSold = numberAt(stats ?? {}, ["max", "max_price", "high"]);
 
@@ -209,11 +258,14 @@ export async function fetchBatComps(make: string, modelFamily: string, windowYea
     if (!object) continue;
     const title = stringAt(object, ["title", "heading", "name"]);
     if (!title) continue;
+    const endTs = numberAt(object, ["timestamp_end"]);
+    const soldText = stringAt(object, ["sold_text"]);
     recentSales.push({
       title,
-      soldPrice: numberAt(object, ["sold_price", "sale_price", "price", "final_bid", "hammer_price"]),
-      date: stringAt(object, ["sold_date", "sale_date", "end_date", "date", "ended_at"]),
+      soldPrice: numberAt(object, ["current_bid", "sold_price", "sale_price", "final_bid"]),
+      date: endTs ? new Date(endTs * 1000).toISOString().slice(0, 10) : stringAt(object, ["sold_date", "end_date", "date"]),
       url: stringAt(object, ["url", "link", "listing_url"]),
+      result: soldText?.toLowerCase().startsWith("sold") ? "sold" : "bid to",
     });
     if (recentSales.length >= 6) break;
   }

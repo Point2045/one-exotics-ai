@@ -40521,7 +40521,7 @@ function firstArrayDeep(value, depth = 0) {
   if (Array.isArray(value)) return value.length ? value : void 0;
   const object2 = asObject(value);
   if (!object2) return void 0;
-  for (const key of ["results", "auctions", "listings", "data", "models", "makes", "sales", "points", "items"]) {
+  for (const key of ["items", "results", "auctions", "listings", "data", "models", "makes", "sales", "points"]) {
     const found = firstArrayDeep(object2[key], depth + 1);
     if (found) return found;
   }
@@ -40557,44 +40557,72 @@ async function callEndpoint(endpoint, params) {
     clearTimeout(timer);
   }
 }
+function foldAccents(value) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
 function slugify2(value) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return foldAccents(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 function normalize(value) {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return foldAccents(value).toLowerCase().replace(/[^a-z0-9]/g, "");
 }
-async function resolveSlugs(make, modelFamily) {
+function stripMake(modelName, makeName) {
+  const modelKey = normalize(modelName);
+  const makeKey = normalize(makeName);
+  return makeKey && modelKey.startsWith(makeKey) ? modelKey.slice(makeKey.length) : modelKey;
+}
+async function resolveSlugs(make, candidates) {
+  const usable = [...new Set(candidates.map((c) => c?.trim()).filter((c) => Boolean(c)))];
   try {
     const directory = await callEndpoint("get_makes_and_models_directory", {});
-    const entries = firstArrayDeep(directory) ?? [];
+    const makes = firstArrayDeep(path(directory, "data")) ?? firstArrayDeep(directory) ?? [];
     const makeKey = normalize(make);
-    const familyKey = normalize(modelFamily);
-    for (const entry of entries) {
-      const object2 = asObject(entry);
-      if (!object2) continue;
-      const entryMake = stringAt(object2, ["make", "make_name", "brand"]);
-      const entryModel = stringAt(object2, ["model", "model_name", "name"]);
-      if (!entryMake || !entryModel) continue;
-      if (normalize(entryMake) !== makeKey) continue;
-      const modelKey = normalize(entryModel);
-      if (modelKey === familyKey || modelKey.includes(familyKey) || familyKey.includes(modelKey)) {
-        return {
-          makeSlug: stringAt(object2, ["make_slug"]) ?? slugify2(entryMake),
-          modelSlug: stringAt(object2, ["model_slug", "slug"]) ?? slugify2(entryModel)
-        };
+    for (const makeEntry of makes) {
+      const makeObject = asObject(makeEntry);
+      if (!makeObject) continue;
+      const entryMake = stringAt(makeObject, ["make", "make_name", "brand", "name"]);
+      if (!entryMake) continue;
+      const entryMakeKey = normalize(entryMake);
+      if (entryMakeKey !== makeKey && !entryMakeKey.includes(makeKey) && !makeKey.includes(entryMakeKey)) continue;
+      const models = Array.isArray(makeObject.models) ? makeObject.models : [];
+      for (const candidate of usable) {
+        const candidateKey = normalize(candidate);
+        for (const modelEntry of models) {
+          const modelObject = asObject(modelEntry);
+          if (!modelObject) continue;
+          const modelName = stringAt(modelObject, ["name", "model", "model_name"]);
+          if (!modelName) continue;
+          const modelKey = stripMake(modelName, entryMake);
+          if (modelKey === candidateKey || modelKey.includes(candidateKey) || candidateKey.includes(modelKey)) {
+            return {
+              makeSlug: slugify2(entryMake),
+              modelSlug: stringAt(modelObject, ["slug"]) ?? slugify2(modelName)
+            };
+          }
+        }
       }
     }
   } catch {
   }
-  return { makeSlug: slugify2(make), modelSlug: slugify2(modelFamily) };
+  const fallback = usable[0] ?? make;
+  return { makeSlug: slugify2(make), modelSlug: slugify2(fallback) };
 }
-async function fetchBatComps(make, modelFamily, windowYears = 1) {
+async function fetchBatComps(make, modelFamily, opts = {}) {
   if (!parseBotConfigured()) return { configured: false };
-  const { makeSlug, modelSlug } = await resolveSlugs(make, modelFamily);
+  const windowYears = opts.windowYears ?? 1;
+  const variantFirstWord = opts.variant?.split(/\s+/)[0];
+  const candidates = [
+    modelFamily.toLowerCase() !== make.toLowerCase() ? modelFamily : void 0,
+    variantFirstWord,
+    opts.searchModel ?? void 0,
+    opts.variant
+  ].filter((candidate) => Boolean(candidate));
+  const { makeSlug, modelSlug } = await resolveSlugs(make, candidates);
   const base = {
     configured: true,
     make,
-    model: modelFamily,
+    model: modelFamily.toLowerCase() !== make.toLowerCase() ? modelFamily : opts.variant ?? modelFamily,
+    baTModel: modelSlug,
     windowYears,
     source: "Bring a Trailer via parse.bot"
   };
@@ -40614,11 +40642,10 @@ async function fetchBatComps(make, modelFamily, windowYears = 1) {
   } catch {
     resultsPayload = void 0;
   }
-  const trends = asObject(trendsPayload);
-  const stats = asObject(path(trendsPayload, "stats")) ?? asObject(path(trendsPayload, "trends")) ?? trends;
+  const stats = asObject(path(trendsPayload, "data")) ?? asObject(trendsPayload);
   const sampleCount = numberAt(stats ?? {}, ["count", "sample_size", "num_results", "total"]);
   const medianSold = numberAt(stats ?? {}, ["median", "median_price", "median_sold_price"]);
-  const averageSold = numberAt(stats ?? {}, ["average", "average_price", "avg", "mean"]);
+  const averageSold = numberAt(stats ?? {}, ["avg", "average", "average_price", "mean"]);
   const minSold = numberAt(stats ?? {}, ["min", "min_price", "low"]);
   const maxSold = numberAt(stats ?? {}, ["max", "max_price", "high"]);
   const recentSales = [];
@@ -40627,11 +40654,14 @@ async function fetchBatComps(make, modelFamily, windowYears = 1) {
     if (!object2) continue;
     const title = stringAt(object2, ["title", "heading", "name"]);
     if (!title) continue;
+    const endTs = numberAt(object2, ["timestamp_end"]);
+    const soldText = stringAt(object2, ["sold_text"]);
     recentSales.push({
       title,
-      soldPrice: numberAt(object2, ["sold_price", "sale_price", "price", "final_bid", "hammer_price"]),
-      date: stringAt(object2, ["sold_date", "sale_date", "end_date", "date", "ended_at"]),
-      url: stringAt(object2, ["url", "link", "listing_url"])
+      soldPrice: numberAt(object2, ["current_bid", "sold_price", "sale_price", "final_bid"]),
+      date: endTs ? new Date(endTs * 1e3).toISOString().slice(0, 10) : stringAt(object2, ["sold_date", "end_date", "date"]),
+      url: stringAt(object2, ["url", "link", "listing_url"]),
+      result: soldText?.toLowerCase().startsWith("sold") ? "sold" : "bid to"
     });
     if (recentSales.length >= 6) break;
   }
@@ -40745,6 +40775,8 @@ async function fetchSellThroughRecents(params) {
   for (const row of rows) {
     const object2 = asObject2(row);
     if (!object2) continue;
+    const removedAt = dateAt(object2, ["last_seen_at_date", "last_seen_at", "expired_at_date", "delisted_date"]);
+    if (!removedAt || Date.now() - removedAt.getTime() < 3 * 864e5) continue;
     const make = stringAt2(object2, ["build.make", "make"]);
     const model = stringAt2(object2, ["build.model", "model"]);
     const title = stringAt2(object2, ["heading", "title", "name"]);
@@ -40752,7 +40784,6 @@ async function fetchSellThroughRecents(params) {
     if (!make || !model || !title || !externalId) continue;
     const vin = stringAt2(object2, ["vin"])?.toUpperCase();
     const listedAt = dateAt(object2, ["first_seen_at_date", "first_seen_at", "scraped_at_date", "listed_date"]);
-    const removedAt = dateAt(object2, ["last_seen_at_date", "last_seen_at", "expired_at_date", "delisted_date"]);
     const daysOnMarket = numberAt2(object2, ["dom", "days_on_market", "dom_active"]);
     const photos = path2(object2, "media.photo_links");
     const photoList = Array.isArray(photos) ? photos.filter((item) => typeof item === "string") : [];
@@ -40800,24 +40831,31 @@ async function fetchVinHistory(vin) {
   if (cached3 && Date.now() - cached3.at < HISTORY_CACHE_TTL_MS) return cached3.value;
   let payload;
   try {
-    payload = await getJson(`${API_BASE2}/history/car/${encodeURIComponent(normalized)}/points?api_key=${apiKey2()}`);
+    payload = await getJson(`${API_BASE2}/history/car/${encodeURIComponent(normalized)}?api_key=${apiKey2()}`);
   } catch {
     const fallback = { configured: true, vin: normalized, points: [], source: "MarketCheck" };
     historyCache.set(normalized, { at: Date.now(), value: fallback });
     return fallback;
   }
-  const rows = firstArrayDeep2(payload) ?? [];
+  const rows = firstArrayDeep2(payload) ?? (Array.isArray(payload) ? payload : []);
+  const seenEpisodes = /* @__PURE__ */ new Set();
   const points = [];
   for (const row of rows) {
     const object2 = asObject2(row);
     if (!object2) continue;
-    const date6 = dateAt(object2, ["date", "day", "listed_date", "observed_at"]);
+    const date6 = dateAt(object2, ["first_seen_at_date", "first_seen_at", "scraped_at_date", "scraped_at"]);
     if (!date6) continue;
+    const miles = numberAt2(object2, ["miles", "miles_value", "odometer"]);
+    const dedupeKey = `${miles ?? "?"}-${date6.toISOString().slice(0, 7)}`;
+    if (seenEpisodes.has(dedupeKey)) continue;
+    seenEpisodes.add(dedupeKey);
+    const seller = stringAt2(object2, ["seller_name"]);
+    const where = [stringAt2(object2, ["city"]), stringAt2(object2, ["state"])].filter(Boolean).join(", ");
     points.push({
       date: date6.toISOString().slice(0, 10),
-      price: numberAt2(object2, ["price", "price_value"]),
-      miles: numberAt2(object2, ["miles", "miles_value", "odometer"]),
-      event: stringAt2(object2, ["status", "event", "source"])
+      price: numberAt2(object2, ["price", "price_value", "ref_price"]),
+      miles,
+      event: [seller, where].filter(Boolean).join(" \xB7 ") || void 0
     });
   }
   points.sort((a, b) => a.date.localeCompare(b.date));
@@ -49371,7 +49409,7 @@ var highlineRouter = createRouter({
     const store = await getStore();
     const model = await store.findSupportedModelById(input.modelId);
     if (!model) throw new Error("Unknown model");
-    return fetchBatComps(model.make, model.modelFamily, 1);
+    return fetchBatComps(model.make, model.modelFamily, { searchModel: model.searchModel, variant: model.variant, windowYears: 1 });
   }),
   /** MarketCheck six-year per-VIN listing history (price/mileage points). */
   vinHistory: publicQuery.input(external_exports.object({ vin: external_exports.string().min(17).max(17) })).query(async ({ input }) => {

@@ -583,6 +583,9 @@ function DetailPanel({ id, onClose }: { id: number; onClose: () => void }) {
                     <div key={index} className="flex items-center justify-between gap-3 rounded-xl bg-black/25 px-3 py-2 text-xs">
                       <span className="min-w-0 truncate text-slate-400">{sale.title}</span>
                       <span className="shrink-0 font-medium text-white">
+                        {sale.result === 'bid to' && (
+                          <span className="mr-1.5 rounded border border-amber-300/25 px-1 py-px text-[9px] uppercase tracking-wide text-amber-200">bid to</span>
+                        )}
                         {money(sale.soldPrice)}
                         {sale.date ? <span className="ml-1.5 text-slate-500">{sale.date.slice(0, 10)}</span> : null}
                       </span>
@@ -596,17 +599,21 @@ function DetailPanel({ id, onClose }: { id: number; onClose: () => void }) {
 
           {vinHistory.data?.configured === true && vinHistory.data.points.length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-400">This VIN's listing history</h3>
+              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-400">
+                This VIN surfaced {vinHistory.data.points.length}× for sale
+              </h3>
               <div className="mt-3 space-y-1.5">
                 {[...vinHistory.data.points].slice(-6).reverse().map((point) => (
                   <div key={point.date} className="flex items-center justify-between gap-3 rounded-xl bg-white/[0.035] px-3 py-2 text-xs">
-                    <span className="text-slate-500">{point.date}</span>
-                    <span className="font-medium text-white">{money(point.price)}</span>
-                    <span className="text-slate-500">{point.miles != null ? `${miles(point.miles)} mi` : ''}</span>
+                    <span className="shrink-0 text-slate-500">{point.date}</span>
+                    <span className="min-w-0 truncate text-slate-400">{point.event ?? ''}</span>
+                    <span className="shrink-0 font-medium text-white">
+                      {point.price != null ? money(point.price) : point.miles != null ? `${miles(point.miles)} mi` : '—'}
+                    </span>
                   </div>
                 ))}
               </div>
-              <p className="mt-2 text-[10px] text-slate-600">Price/mileage each time this VIN was listed · {vinHistory.data.source}</p>
+              <p className="mt-2 text-[10px] text-slate-600">Relisting trail + mileage progression for this exact car · {vinHistory.data.source}</p>
             </div>
           )}
 

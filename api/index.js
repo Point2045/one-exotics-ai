@@ -40610,6 +40610,7 @@ async function resolveSlugs(make, candidates) {
 async function fetchBatComps(make, modelFamily, opts = {}) {
   if (!parseBotConfigured()) return { configured: false };
   const windowYears = opts.windowYears ?? 1;
+  const includeResults = opts.includeResults ?? true;
   const variantFirstWord = opts.variant?.split(/\s+/)[0];
   const candidates = [
     modelFamily.toLowerCase() !== make.toLowerCase() ? modelFamily : void 0,
@@ -40637,10 +40638,12 @@ async function fetchBatComps(make, modelFamily, opts = {}) {
   } catch (error48) {
     return { ...base, matched: false, recentSales: [], error: error48 instanceof Error ? error48.message : "price trends unavailable" };
   }
-  try {
-    resultsPayload = await callEndpoint("get_model_auction_results", { make: makeSlug, model: modelSlug, page: "1" });
-  } catch {
-    resultsPayload = void 0;
+  if (includeResults) {
+    try {
+      resultsPayload = await callEndpoint("get_model_auction_results", { make: makeSlug, model: modelSlug, page: "1" });
+    } catch {
+      resultsPayload = void 0;
+    }
   }
   const stats = asObject(path(trendsPayload, "data")) ?? asObject(trendsPayload);
   const sampleCount = numberAt(stats ?? {}, ["count", "sample_size", "num_results", "total"]);
@@ -40663,7 +40666,7 @@ async function fetchBatComps(make, modelFamily, opts = {}) {
       url: stringAt(object2, ["url", "link", "listing_url"]),
       result: soldText?.toLowerCase().startsWith("sold") ? "sold" : "bid to"
     });
-    if (recentSales.length >= 6) break;
+    if (recentSales.length >= 24) break;
   }
   const matched = sampleCount != null || medianSold != null || recentSales.length > 0;
   return {
@@ -48897,6 +48900,81 @@ async function marketStats() {
     markets
   };
 }
+async function soldMarket(windowDays, make, limit) {
+  const store = await getStore();
+  const [modelRows, delistedRows, activeRows] = await Promise.all([
+    store.allSupportedModels(),
+    store.recentlyDelisted(windowDays, 5e3),
+    store.activeListings(5e3)
+  ]);
+  const modelsById = new Map(modelRows.map((model) => [model.id, model]));
+  const trends = modelRows.map((model) => {
+    const exits = delistedRows.filter((listing) => listing.modelId === model.id);
+    const actives = activeRows.filter((listing) => listing.modelId === model.id && listing.price);
+    if (!exits.length && !actives.length) return null;
+    const exitAsks = exits.map((listing) => listing.price).filter((price) => Boolean(price)).sort((a, b) => a - b);
+    const activeAsks = actives.map((listing) => listing.price).sort((a, b) => a - b);
+    const durations = exits.map((listing) => {
+      const start = (listing.listedAt ?? listing.firstSeenAt)?.getTime();
+      const end = listing.removedAt?.getTime();
+      if (start == null || end == null) return null;
+      const days = Math.round((end - start) / 864e5);
+      return days >= 1 && days <= 365 ? days : null;
+    }).filter((days) => days != null).sort((a, b) => a - b);
+    const medianExitAsk = percentileOf(exitAsks, 0.5);
+    const medianActiveAsk = percentileOf(activeAsks, 0.5);
+    const askDriftPct = medianExitAsk != null && medianActiveAsk != null && medianExitAsk > 0 ? Math.round((medianActiveAsk - medianExitAsk) / medianExitAsk * 1e3) / 10 : null;
+    return {
+      modelId: model.id,
+      make: model.make,
+      modelFamily: model.modelFamily,
+      variant: model.variant,
+      generation: model.generation,
+      exitCount: exits.length,
+      activeCount: actives.length,
+      medianExitAsk,
+      medianActiveAsk,
+      askDriftPct,
+      medianDaysToSell: durations.length >= 2 ? percentileOf(durations, 0.5) : null
+    };
+  }).filter((trend) => Boolean(trend)).sort((a, b) => b.exitCount - a.exitCount);
+  const makeFilter = make?.toLowerCase();
+  const listings2 = delistedRows.filter((listing) => !makeFilter || listing.make.toLowerCase() === makeFilter).map((listing) => {
+    const start = (listing.listedAt ?? listing.firstSeenAt)?.getTime();
+    const end = listing.removedAt?.getTime();
+    const daysToSell = start != null && end != null ? Math.round((end - start) / 864e5) : null;
+    const model = listing.modelId ? modelsById.get(listing.modelId) : void 0;
+    return {
+      id: listing.id,
+      vin: listing.vin,
+      title: listing.title,
+      year: listing.year,
+      make: listing.make,
+      model: listing.model,
+      trim: listing.trim,
+      modelId: listing.modelId ?? null,
+      variant: model?.variant ?? null,
+      price: listing.price,
+      mileage: listing.mileage,
+      city: listing.city,
+      state: listing.state,
+      url: listing.url,
+      imageUrl: listing.imageUrl,
+      source: listing.source,
+      listedAt: listing.listedAt?.toISOString() ?? null,
+      leftMarketAt: listing.removedAt?.toISOString() ?? null,
+      daysToSell: daysToSell != null && daysToSell >= 0 && daysToSell <= 1095 ? daysToSell : null
+    };
+  }).sort((a, b) => (b.leftMarketAt ?? "").localeCompare(a.leftMarketAt ?? "")).slice(0, limit);
+  return {
+    computedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    windowDays,
+    totalExits: delistedRows.length,
+    variantsWithExits: trends.filter((trend) => trend.exitCount > 0).length,
+    trends,
+    listings: listings2
+  };
+}
 async function listingDetail(id) {
   const store = await getStore();
   const listing = await store.findListingById(id);
@@ -49416,6 +49494,58 @@ var highlineRouter = createRouter({
   vinHistory: publicQuery.input(external_exports.object({ vin: external_exports.string().min(17).max(17) })).query(async ({ input }) => {
     await ensureHighlineReady();
     return fetchVinHistory(input.vin);
+  }),
+  /** Cars that left the market in a trailing window — exit feed + per-variant drift. */
+  sold: publicQuery.input(
+    external_exports.object({
+      days: external_exports.union([external_exports.literal(30), external_exports.literal(90), external_exports.literal(180)]).optional(),
+      make: external_exports.string().max(80).optional(),
+      limit: external_exports.number().int().min(1).max(500).optional()
+    }).optional()
+  ).query(async ({ input }) => {
+    await ensureHighlineReady();
+    return soldMarket(input?.days ?? 90, input?.make, input?.limit ?? 200);
+  }),
+  /**
+   * Appreciation signal: median of the most recent ~24 BaT auctions vs the model's
+   * all-time BaT median. parse.bot's price-trends endpoint ignores its years param
+   * (verified 2026-08 — always returns all-time stats), so the momentum window is
+   * computed from dated auction results instead. Costs 2 parse.bot calls per
+   * uncached lookup — loaded on demand from the UI.
+   */
+  batTrendCompare: publicQuery.input(external_exports.object({ modelId: external_exports.number().int().positive() })).query(async ({ input }) => {
+    await ensureHighlineReady();
+    const store = await getStore();
+    const model = await store.findSupportedModelById(input.modelId);
+    if (!model) throw new Error("Unknown model");
+    const comps = await fetchBatComps(model.make, model.modelFamily, {
+      searchModel: model.searchModel,
+      variant: model.variant,
+      includeResults: true
+    });
+    if (!comps.configured) return { configured: false };
+    if (!comps.matched) {
+      return { configured: true, matched: false, baTModel: comps.baTModel ?? null, error: comps.error ?? "No BaT coverage" };
+    }
+    const recentPrices = comps.recentSales.map((sale) => sale.soldPrice).filter((price) => price != null && price > 1e4).sort((a, b) => a - b);
+    const recentMedian = recentPrices.length ? recentPrices[Math.floor((recentPrices.length - 1) * 0.5)] : null;
+    const allTimeMedian = comps.medianSold ?? null;
+    const driftPct = recentMedian != null && allTimeMedian != null && allTimeMedian > 0 ? Math.round((recentMedian / allTimeMedian - 1) * 1e3) / 10 : null;
+    const dates = comps.recentSales.map((sale) => sale.date).filter((date6) => Boolean(date6)).sort();
+    return {
+      configured: true,
+      matched: true,
+      baTModel: comps.baTModel ?? null,
+      recentMedian,
+      recentCount: recentPrices.length,
+      recentSpanStart: dates[0] ?? null,
+      recentSpanEnd: dates[dates.length - 1] ?? null,
+      allTimeMedian,
+      allTimeCount: comps.sampleCount ?? null,
+      driftPct,
+      error: null,
+      source: "Bring a Trailer via parse.bot"
+    };
   })
 });
 

@@ -394,6 +394,9 @@ function AppHeader() {
           <a href="/markets" className="outline-button hidden !py-2.5 sm:inline-flex">
             Markets
           </a>
+          <a href="/sold" className="outline-button hidden !py-2.5 sm:inline-flex">
+            Sold
+          </a>
           <a href="/radar" className="luxury-button hidden sm:inline-flex">
             Open live radar
             <ArrowRight className="h-4 w-4" />

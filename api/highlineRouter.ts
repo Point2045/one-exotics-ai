@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createRouter, publicQuery } from "./middleware";
 import { fetchBatComps } from "./providers/batComps";
 import { fetchVinHistory } from "./providers/marketcheck";
-import { dashboardSummary, dealRadar, listingDetail, listSupportedModels, marketStats } from "./queries/highline";
+import { dashboardSummary, dealRadar, listingDetail, listSupportedModels, marketStats, soldMarket } from "./queries/highline";
 import { ensureHighlineReady } from "./services/bootstrap";
 import { latestIngestionRun, refreshListingsFromAutoDev } from "./services/ingestion";
 import { getStore } from "./services/store";
@@ -93,5 +93,72 @@ export const highlineRouter = createRouter({
   vinHistory: publicQuery.input(z.object({ vin: z.string().min(17).max(17) })).query(async ({ input }) => {
     await ensureHighlineReady();
     return fetchVinHistory(input.vin);
+  }),
+
+  /** Cars that left the market in a trailing window — exit feed + per-variant drift. */
+  sold: publicQuery
+    .input(
+      z
+        .object({
+          days: z.union([z.literal(30), z.literal(90), z.literal(180)]).optional(),
+          make: z.string().max(80).optional(),
+          limit: z.number().int().min(1).max(500).optional(),
+        })
+        .optional(),
+    )
+    .query(async ({ input }) => {
+      await ensureHighlineReady();
+      return soldMarket(input?.days ?? 90, input?.make, input?.limit ?? 200);
+    }),
+
+  /**
+   * Appreciation signal: median of the most recent ~24 BaT auctions vs the model's
+   * all-time BaT median. parse.bot's price-trends endpoint ignores its years param
+   * (verified 2026-08 — always returns all-time stats), so the momentum window is
+   * computed from dated auction results instead. Costs 2 parse.bot calls per
+   * uncached lookup — loaded on demand from the UI.
+   */
+  batTrendCompare: publicQuery.input(z.object({ modelId: z.number().int().positive() })).query(async ({ input }) => {
+    await ensureHighlineReady();
+    const store = await getStore();
+    const model = await store.findSupportedModelById(input.modelId);
+    if (!model) throw new Error("Unknown model");
+    const comps = await fetchBatComps(model.make, model.modelFamily, {
+      searchModel: model.searchModel,
+      variant: model.variant,
+      includeResults: true,
+    });
+    if (!comps.configured) return { configured: false as const };
+    if (!comps.matched) {
+      return { configured: true as const, matched: false as const, baTModel: comps.baTModel ?? null, error: comps.error ?? "No BaT coverage" };
+    }
+
+    // Memorabilia/parts show up in BaT model catalogs — drop implausible prices.
+    const recentPrices = comps.recentSales
+      .map((sale) => sale.soldPrice)
+      .filter((price): price is number => price != null && price > 10_000)
+      .sort((a, b) => a - b);
+    const recentMedian = recentPrices.length ? recentPrices[Math.floor((recentPrices.length - 1) * 0.5)] : null;
+    const allTimeMedian = comps.medianSold ?? null;
+    const driftPct =
+      recentMedian != null && allTimeMedian != null && allTimeMedian > 0
+        ? Math.round((recentMedian / allTimeMedian - 1) * 1000) / 10
+        : null;
+    const dates = comps.recentSales.map((sale) => sale.date).filter((date): date is string => Boolean(date)).sort();
+
+    return {
+      configured: true as const,
+      matched: true as const,
+      baTModel: comps.baTModel ?? null,
+      recentMedian,
+      recentCount: recentPrices.length,
+      recentSpanStart: dates[0] ?? null,
+      recentSpanEnd: dates[dates.length - 1] ?? null,
+      allTimeMedian,
+      allTimeCount: comps.sampleCount ?? null,
+      driftPct,
+      error: null,
+      source: "Bring a Trailer via parse.bot",
+    };
   }),
 });

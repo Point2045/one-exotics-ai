@@ -79,13 +79,21 @@ function MarketsHeader() {
             <h1 className="mt-1 text-lg font-semibold text-white">Variant Markets</h1>
           </div>
         </div>
-        <Link
-          to="/radar"
-          className="hidden items-center gap-2 rounded-full border border-[#d7b56d]/30 bg-[#d7b56d]/10 px-3 py-1.5 text-xs text-[#f0d692] transition hover:bg-[#d7b56d]/20 md:flex"
-        >
-          <RadarIcon className="h-3.5 w-3.5" />
-          Deal Radar
-        </Link>
+        <div className="hidden items-center gap-2 md:flex">
+          <Link
+            to="/sold"
+            className="flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs text-slate-300 transition hover:bg-white/[0.08]"
+          >
+            Sold
+          </Link>
+          <Link
+            to="/radar"
+            className="flex items-center gap-2 rounded-full border border-[#d7b56d]/30 bg-[#d7b56d]/10 px-3 py-1.5 text-xs text-[#f0d692] transition hover:bg-[#d7b56d]/20"
+          >
+            <RadarIcon className="h-3.5 w-3.5" />
+            Deal Radar
+          </Link>
+        </div>
       </div>
     </header>
   )

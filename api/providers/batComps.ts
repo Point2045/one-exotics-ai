@@ -205,11 +205,12 @@ export type BatComps =
 export async function fetchBatComps(
   make: string,
   modelFamily: string,
-  opts: { searchModel?: string | null; variant?: string; windowYears?: number } = {},
+  opts: { searchModel?: string | null; variant?: string; windowYears?: number; includeResults?: boolean } = {},
 ): Promise<BatComps> {
   if (!parseBotConfigured()) return { configured: false };
 
   const windowYears = opts.windowYears ?? 1;
+  const includeResults = opts.includeResults ?? true;
   const variantFirstWord = opts.variant?.split(/\s+/)[0];
   const candidates = [
     modelFamily.toLowerCase() !== make.toLowerCase() ? modelFamily : undefined,
@@ -239,10 +240,12 @@ export async function fetchBatComps(
   } catch (error) {
     return { ...base, matched: false, recentSales: [], error: error instanceof Error ? error.message : "price trends unavailable" };
   }
-  try {
-    resultsPayload = await callEndpoint<unknown>("get_model_auction_results", { make: makeSlug, model: modelSlug, page: "1" });
-  } catch {
-    resultsPayload = undefined; // Trends alone are still useful.
+  if (includeResults) {
+    try {
+      resultsPayload = await callEndpoint<unknown>("get_model_auction_results", { make: makeSlug, model: modelSlug, page: "1" });
+    } catch {
+      resultsPayload = undefined; // Trends alone are still useful.
+    }
   }
 
   const stats = asObject(path(trendsPayload, "data")) ?? asObject(trendsPayload);
@@ -267,7 +270,7 @@ export async function fetchBatComps(
       url: stringAt(object, ["url", "link", "listing_url"]),
       result: soldText?.toLowerCase().startsWith("sold") ? "sold" : "bid to",
     });
-    if (recentSales.length >= 6) break;
+    if (recentSales.length >= 24) break;
   }
 
   const matched = sampleCount != null || medianSold != null || recentSales.length > 0;

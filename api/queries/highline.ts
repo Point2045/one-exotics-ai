@@ -260,6 +260,107 @@ export async function marketStats() {
   };
 }
 
+/**
+ * Cars that left the market in a trailing window (30/90/180 days): per-variant exit
+ * aggregates (count, median exit ask, days-to-sell, drift vs current ask) plus the
+ * individual exit feed. Prices are last advertised asks, not transaction prices —
+ * BaT sold comps (batTrendCompare) carry the true sold-side signal.
+ */
+export async function soldMarket(windowDays: number, make: string | undefined, limit: number) {
+  const store = await getStore();
+  const [modelRows, delistedRows, activeRows] = await Promise.all([
+    store.allSupportedModels(),
+    store.recentlyDelisted(windowDays, 5000),
+    store.activeListings(5000),
+  ]);
+  const modelsById = new Map(modelRows.map((model) => [model.id, model]));
+
+  const trends = modelRows
+    .map((model) => {
+      const exits = delistedRows.filter((listing) => listing.modelId === model.id);
+      const actives = activeRows.filter((listing) => listing.modelId === model.id && listing.price);
+      if (!exits.length && !actives.length) return null;
+
+      const exitAsks = exits.map((listing) => listing.price).filter((price): price is number => Boolean(price)).sort((a, b) => a - b);
+      const activeAsks = actives.map((listing) => listing.price!).sort((a, b) => a - b);
+      const durations = exits
+        .map((listing) => {
+          const start = (listing.listedAt ?? listing.firstSeenAt)?.getTime();
+          const end = listing.removedAt?.getTime();
+          if (start == null || end == null) return null;
+          const days = Math.round((end - start) / 86_400_000);
+          return days >= 1 && days <= 365 ? days : null;
+        })
+        .filter((days): days is number => days != null)
+        .sort((a, b) => a - b);
+
+      const medianExitAsk = percentileOf(exitAsks, 0.5);
+      const medianActiveAsk = percentileOf(activeAsks, 0.5);
+      const askDriftPct =
+        medianExitAsk != null && medianActiveAsk != null && medianExitAsk > 0
+          ? Math.round(((medianActiveAsk - medianExitAsk) / medianExitAsk) * 1000) / 10
+          : null;
+
+      return {
+        modelId: model.id,
+        make: model.make,
+        modelFamily: model.modelFamily,
+        variant: model.variant,
+        generation: model.generation,
+        exitCount: exits.length,
+        activeCount: actives.length,
+        medianExitAsk,
+        medianActiveAsk,
+        askDriftPct,
+        medianDaysToSell: durations.length >= 2 ? percentileOf(durations, 0.5) : null,
+      };
+    })
+    .filter((trend): trend is NonNullable<typeof trend> => Boolean(trend))
+    .sort((a, b) => b.exitCount - a.exitCount);
+
+  const makeFilter = make?.toLowerCase();
+  const listings = delistedRows
+    .filter((listing) => !makeFilter || listing.make.toLowerCase() === makeFilter)
+    .map((listing) => {
+      const start = (listing.listedAt ?? listing.firstSeenAt)?.getTime();
+      const end = listing.removedAt?.getTime();
+      const daysToSell = start != null && end != null ? Math.round((end - start) / 86_400_000) : null;
+      const model = listing.modelId ? modelsById.get(listing.modelId) : undefined;
+      return {
+        id: listing.id,
+        vin: listing.vin,
+        title: listing.title,
+        year: listing.year,
+        make: listing.make,
+        model: listing.model,
+        trim: listing.trim,
+        modelId: listing.modelId ?? null,
+        variant: model?.variant ?? null,
+        price: listing.price,
+        mileage: listing.mileage,
+        city: listing.city,
+        state: listing.state,
+        url: listing.url,
+        imageUrl: listing.imageUrl,
+        source: listing.source,
+        listedAt: listing.listedAt?.toISOString() ?? null,
+        leftMarketAt: listing.removedAt?.toISOString() ?? null,
+        daysToSell: daysToSell != null && daysToSell >= 0 && daysToSell <= 1095 ? daysToSell : null,
+      };
+    })
+    .sort((a, b) => (b.leftMarketAt ?? "").localeCompare(a.leftMarketAt ?? ""))
+    .slice(0, limit);
+
+  return {
+    computedAt: new Date().toISOString(),
+    windowDays,
+    totalExits: delistedRows.length,
+    variantsWithExits: trends.filter((trend) => trend.exitCount > 0).length,
+    trends,
+    listings,
+  };
+}
+
 export async function listingDetail(id: number) {
   const store = await getStore();
   const listing = await store.findListingById(id);

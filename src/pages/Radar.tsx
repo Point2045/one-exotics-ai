@@ -165,6 +165,9 @@ function RadarHeader() {
           </div>
         </div>
         <div className="hidden items-center gap-3 text-xs text-slate-400 md:flex">
+          <Link to="/sold" className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-slate-300 transition hover:bg-white/[0.08]">
+            Sold
+          </Link>
           <Link to="/markets" className="rounded-full border border-[#d7b56d]/30 bg-[#d7b56d]/10 px-3 py-1.5 text-[#f0d692] transition hover:bg-[#d7b56d]/20">
             Markets
           </Link>
@@ -561,7 +564,7 @@ function DetailPanel({ id, onClose }: { id: number; onClose: () => void }) {
           {batComps.data?.configured === true && batComps.data.matched && (
             <div className="rounded-2xl border border-[#d7b56d]/20 bg-[#d7b56d]/[0.05] p-4">
               <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-[#f0d692]">
-                Sold comps · Bring a Trailer ({batComps.data.windowYears}yr)
+                Sold comps · Bring a Trailer
               </h3>
               <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                 <div className="rounded-xl bg-black/25 p-2.5">
@@ -579,7 +582,7 @@ function DetailPanel({ id, onClose }: { id: number; onClose: () => void }) {
               </div>
               {batComps.data.recentSales.length > 0 && (
                 <div className="mt-3 space-y-1.5">
-                  {batComps.data.recentSales.map((sale, index) => (
+                  {batComps.data.recentSales.slice(0, 6).map((sale, index) => (
                     <div key={index} className="flex items-center justify-between gap-3 rounded-xl bg-black/25 px-3 py-2 text-xs">
                       <span className="min-w-0 truncate text-slate-400">{sale.title}</span>
                       <span className="shrink-0 font-medium text-white">

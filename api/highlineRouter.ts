@@ -4,6 +4,7 @@ import { fetchBatComps } from "./providers/batComps";
 import { fetchVinHistory } from "./providers/marketcheck";
 import { dashboardSummary, dealRadar, listingDetail, listSupportedModels, marketStats, soldMarket } from "./queries/highline";
 import { ensureHighlineReady } from "./services/bootstrap";
+import { buildVariantForecast } from "./services/forecast";
 import { latestIngestionRun, refreshListingsFromAutoDev } from "./services/ingestion";
 import { getStore } from "./services/store";
 import { buildVinReport } from "./services/vinIntel";
@@ -160,5 +161,11 @@ export const highlineRouter = createRouter({
       error: null,
       source: "Bring a Trailer via parse.bot",
     };
+  }),
+
+  /** Dated BaT sold history + log-linear drift projection for one variant (on demand, cached 7d). */
+  batHistory: publicQuery.input(z.object({ modelId: z.number().int().positive() })).query(async ({ input }) => {
+    await ensureHighlineReady();
+    return buildVariantForecast(input.modelId);
   }),
 });

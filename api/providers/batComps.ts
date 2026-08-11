@@ -18,6 +18,8 @@ type JsonObject = Record<string, unknown>;
 const API_BASE = "https://api.parse.bot/scraper/0ea2dbf8-cbae-4a6b-90d3-149278f4a294";
 const TIMEOUT_MS = 15_000;
 const CACHE_TTL_MS = 24 * 86_400_000;
+/** Sold history changes slowly — cache deep pulls for a week. */
+const HISTORY_CACHE_TTL_MS = 7 * 24 * 86_400_000;
 /** ~40 BaT calls/month on the free plan; keep headroom under the cap. */
 const DAILY_CALL_CAP = 20;
 
@@ -86,10 +88,10 @@ function callBudgetRemaining(): number {
   return DAILY_CALL_CAP - (callLog.get(today) ?? 0);
 }
 
-async function callEndpoint<T>(endpoint: string, params: Record<string, string>): Promise<T> {
+async function callEndpoint<T>(endpoint: string, params: Record<string, string>, ttlMs = CACHE_TTL_MS): Promise<T> {
   const cacheKey = `${endpoint}?${new URLSearchParams(params).toString()}`;
   const hit = cache.get(cacheKey);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value as T;
+  if (hit && Date.now() - hit.at < ttlMs) return hit.value as T;
   if (callBudgetRemaining() <= 0) throw new Error("BaT comps daily call budget reached — cached results only until tomorrow.");
 
   const url = `${API_BASE}/${endpoint}?${new URLSearchParams(params).toString()}`;
@@ -284,5 +286,94 @@ export async function fetchBatComps(
     maxSold,
     recentSales,
     error: matched ? undefined : "No BaT results matched this model slug.",
+  };
+}
+
+// --- Deep sales history (for charts + projection) ---------------------------
+
+export type BatSalePoint = { date: string; ts: number; price: number; result: "sold" | "bid to"; title: string; url?: string };
+
+export type BatSalesHistory =
+  | { configured: true; matched: boolean; baTModel?: string; sales: BatSalePoint[]; pagesFetched: number; error?: string }
+  | { configured: false };
+
+/**
+ * Dated sold prices for a model going back up to ~5 years, pulled page by page
+ * (24 results/page, each page 1 parse.bot call, cached 7 days). Stops early at the
+ * catalog's end or the 5-year line. maxPages bounds the credit spend per pull.
+ */
+export async function fetchBatSalesHistory(
+  make: string,
+  modelFamily: string,
+  opts: { searchModel?: string | null; variant?: string; maxPages?: number } = {},
+): Promise<BatSalesHistory> {
+  if (!parseBotConfigured()) return { configured: false };
+
+  const maxPages = Math.max(1, Math.min(opts.maxPages ?? 4, 6));
+  const variantFirstWord = opts.variant?.split(/\s+/)[0];
+  const candidates = [
+    modelFamily.toLowerCase() !== make.toLowerCase() ? modelFamily : undefined,
+    variantFirstWord,
+    opts.searchModel ?? undefined,
+    opts.variant,
+  ].filter((candidate): candidate is string => Boolean(candidate));
+
+  const { makeSlug, modelSlug } = await resolveSlugs(make, candidates);
+  const cutoff = Date.now() - 5 * 365 * 86_400_000;
+
+  const sales: BatSalePoint[] = [];
+  let pagesFetched = 0;
+  let stopEarly = false;
+
+  for (let page = 1; page <= maxPages && !stopEarly; page += 1) {
+    let payload: unknown;
+    try {
+      payload = await callEndpoint<unknown>("get_model_auction_results", { make: makeSlug, model: modelSlug, page: String(page) }, HISTORY_CACHE_TTL_MS);
+    } catch (error) {
+      if (pagesFetched === 0) {
+        return { configured: true, matched: false, baTModel: modelSlug, sales: [], pagesFetched, error: error instanceof Error ? error.message : "history unavailable" };
+      }
+      break; // Budget cap mid-pull — keep the pages we already have.
+    }
+    pagesFetched += 1;
+
+    const items = firstArrayDeep(payload) ?? [];
+    if (!items.length) break;
+    for (const row of items) {
+      const object = asObject(row);
+      if (!object) continue;
+      if (object.active === true) continue; // Live auctions aren't sold data.
+      const title = stringAt(object, ["title"]) ?? "";
+      const price = numberAt(object, ["current_bid", "sold_price", "final_bid"]);
+      const endTs = numberAt(object, ["timestamp_end"]);
+      if (!price || !endTs) continue;
+      const ts = endTs * 1000;
+      if (ts < cutoff) {
+        stopEarly = true; // Pages are newest-first — older pages only get older.
+        continue;
+      }
+      const soldText = stringAt(object, ["sold_text"]);
+      sales.push({
+        date: new Date(ts).toISOString().slice(0, 10),
+        ts,
+        price,
+        result: soldText?.toLowerCase().startsWith("sold") ? "sold" : "bid to",
+        title,
+        url: stringAt(object, ["url"]),
+      });
+    }
+    const itemsTotal = numberAt(asObject(path(payload, "data")) ?? {}, ["items_total"]);
+    const perPage = numberAt(asObject(path(payload, "data")) ?? {}, ["items_per_page"]) ?? 24;
+    if (itemsTotal != null && page * perPage >= itemsTotal) break;
+  }
+
+  sales.sort((a, b) => a.ts - b.ts);
+  return {
+    configured: true,
+    matched: sales.length > 0,
+    baTModel: modelSlug,
+    sales,
+    pagesFetched,
+    error: sales.length ? undefined : "No dated BaT sales found for this model.",
   };
 }

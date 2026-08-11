@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { Link } from 'react-router'
-import { ArrowLeft, ArrowUpDown, Gavel, History, Radar as RadarIcon, TrendingDown, TrendingUp } from 'lucide-react'
+import { ArrowLeft, ArrowUpDown, ChevronDown, ChevronRight, Gavel, History, LineChart, Radar as RadarIcon, TrendingDown, TrendingUp } from 'lucide-react'
 import { trpc } from '@/providers/trpc'
 import type { inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '../../api/router'
@@ -57,6 +57,203 @@ function DriftChip({ pct, suffix }: { pct: number | null; suffix?: string }) {
       {pct >= 0 ? '+' : ''}
       {pct.toFixed(1)}%{suffix ?? ''}
     </span>
+  )
+}
+
+type BatHistory = Extract<RouterOutputs['highline']['batHistory'], { matched: true }>
+
+function compactMoney(value: number) {
+  return value >= 1_000_000 ? `$${(value / 1_000_000).toFixed(2)}M` : `$${Math.round(value / 1000)}k`
+}
+
+/** Inline SVG: dated sales scatter + quarterly medians + drift line + projection whiskers. */
+function SaleChart({ data, nowTs }: { data: BatHistory; nowTs: number }) {
+  const W = 780
+  const H = 280
+  const pad = { l: 62, r: 18, t: 14, b: 30 }
+
+  const allPrices = data.points.map((point) => point.price)
+  if (data.regression) {
+    for (const proj of data.regression.projection) allPrices.push(proj.bull, proj.bear)
+  }
+  const minP = Math.min(...allPrices) * 0.9
+  const maxP = Math.max(...allPrices) * 1.06
+  const minT = Math.min(...data.points.map((point) => point.ts))
+  const maxT = data.regression ? data.regression.projectionCurve[data.regression.projectionCurve.length - 1].ts : Math.max(...data.points.map((point) => point.ts))
+
+  const x = (ts: number) => pad.l + ((ts - minT) / Math.max(1, maxT - minT)) * (W - pad.l - pad.r)
+  const y = (price: number) => pad.t + (1 - (price - minP) / (maxP - minP)) * (H - pad.t - pad.b)
+
+  const yTicks = Array.from({ length: 4 }, (_, index) => minP + ((maxP - minP) * (index + 1)) / 5)
+  const yearLabels = [new Date(minT).getUTCFullYear(), new Date(maxT).getUTCFullYear()]
+  const quarterlyPath = data.quarterly.map((bucket, index) => `${index === 0 ? 'M' : 'L'}${x(bucket.ts).toFixed(1)},${y(bucket.median).toFixed(1)}`).join(' ')
+  const curvePath = data.regression
+    ? data.regression.projectionCurve.map((point, index) => `${index === 0 ? 'M' : 'L'}${x(point.ts).toFixed(1)},${y(point.price).toFixed(1)}`).join(' ')
+    : null
+  const nowX = x(nowTs)
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="mt-4 w-full">
+      {yTicks.map((tick) => (
+        <g key={tick}>
+          <line x1={pad.l} x2={W - pad.r} y1={y(tick)} y2={y(tick)} stroke="rgba(255,255,255,0.06)" />
+          <text x={pad.l - 8} y={y(tick) + 3} textAnchor="end" fontSize="10" fill="#64748b">
+            {compactMoney(tick)}
+          </text>
+        </g>
+      ))}
+      <text x={pad.l} y={H - 8} fontSize="10" fill="#64748b">{yearLabels[0]}</text>
+      <text x={W - pad.r} y={H - 8} textAnchor="end" fontSize="10" fill="#64748b">
+        {yearLabels[1]}{data.regression ? ' (proj.)' : ''}
+      </text>
+      {data.regression && <line x1={nowX} x2={nowX} y1={pad.t} y2={H - pad.b} stroke="rgba(255,255,255,0.14)" strokeDasharray="3 4" />}
+
+      {data.points.map((point, index) => (
+        <circle
+          key={index}
+          cx={x(point.ts)}
+          cy={y(point.price)}
+          r={point.result === 'sold' ? 2.6 : 2}
+          fill={point.result === 'sold' ? 'rgba(52,211,153,0.55)' : 'rgba(148,163,184,0.35)'}
+        />
+      ))}
+
+      {data.quarterly.length > 1 && <path d={quarterlyPath} fill="none" stroke="#d7b56d" strokeWidth="2" />}
+      {data.quarterly.map((bucket) => (
+        <circle key={bucket.quarter} cx={x(bucket.ts)} cy={y(bucket.median)} r="3" fill="#d7b56d" />
+      ))}
+
+      {curvePath && <path d={curvePath} fill="none" stroke="#f0d692" strokeWidth="1.5" strokeDasharray="6 4" />}
+
+      {data.regression?.projection.filter((proj) => proj.monthsAhead <= 36).map((proj) => (
+        <g key={proj.monthsAhead}>
+          <line x1={x(proj.ts)} x2={x(proj.ts)} y1={y(proj.bear)} y2={y(proj.bull)} stroke="#f0d692" strokeWidth="1.5" />
+          <line x1={x(proj.ts) - 5} x2={x(proj.ts) + 5} y1={y(proj.bear)} y2={y(proj.bear)} stroke="#f0d692" strokeWidth="1.5" />
+          <line x1={x(proj.ts) - 5} x2={x(proj.ts) + 5} y1={y(proj.bull)} y2={y(proj.bull)} stroke="#f0d692" strokeWidth="1.5" />
+          <circle cx={x(proj.ts)} cy={y(proj.base)} r="3.5" fill="#f0d692" />
+          <text x={x(proj.ts)} y={y(proj.bull) - 6} textAnchor="middle" fontSize="10" fill="#f0d692">
+            +{proj.monthsAhead}mo {compactMoney(proj.base)}
+          </text>
+        </g>
+      ))}
+    </svg>
+  )
+}
+
+/** Expandable per-variant panel: BaT sold history chart + regression projection. */
+function VariantHistoryPanel({ modelId }: { modelId: number }) {
+  const history = trpc.highline.batHistory.useQuery({ modelId }, { staleTime: 3_600_000, retry: false })
+  const [nowTs] = useState(() => Date.now())
+
+  if (history.isLoading || history.isFetching) {
+    return <p className="px-2 py-6 text-sm text-slate-400">Pulling dated auction history (up to 4 pages of results)…</p>
+  }
+  const data = history.data
+  if (!data || data.configured === false) return <p className="px-2 py-6 text-sm text-slate-500">Parse.bot key not configured.</p>
+  if (!data.matched) return <p className="px-2 py-6 text-sm text-slate-500">{data.error ?? 'No dated BaT sales for this variant.'}</p>
+
+  const confidenceTone =
+    data.confidence === 'solid'
+      ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-300'
+      : data.confidence === 'indicative'
+        ? 'border-amber-300/25 bg-amber-300/10 text-amber-200'
+        : 'border-white/[0.08] bg-white/[0.04] text-slate-400'
+
+  return (
+    <div className="px-2 py-4">
+      <p className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
+        <LineChart className="h-3.5 w-3.5 text-[#f0d692]" />
+        Auction history &amp; price projection · {data.baTModel}
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {[
+          ['Dated sales', `${data.saleCount} sold · ${data.bidToCount} bid-to`],
+          ['Span', data.spanStart && data.spanEnd ? `${data.spanStart.slice(0, 7)} → ${data.spanEnd.slice(0, 7)}` : '—'],
+          ['All-time median', money(data.allTimeMedian)],
+          [
+            'Drift (next 12mo)',
+            data.regression ? (
+              <span className="inline-flex items-center gap-2">
+                <DriftChip pct={data.regression.annualizedPct} suffix="/yr" />
+                <span className="text-xs font-normal text-slate-500">LT {data.regression.longTermPct >= 0 ? '+' : ''}{data.regression.longTermPct}%</span>
+              </span>
+            ) : (
+              <span className="text-slate-500">not enough data</span>
+            ),
+          ],
+          [
+            '+12mo base case',
+            data.regression ? (
+              <span className="font-semibold text-white">
+                {money(data.regression.projection[1].base)}
+                <span className="ml-1.5 text-xs font-normal text-slate-500">
+                  bear {compactMoney(data.regression.projection[1].bear)} · bull {compactMoney(data.regression.projection[1].bull)}
+                </span>
+              </span>
+            ) : (
+              <span className="text-slate-500">—</span>
+            ),
+          ],
+        ].map(([label, value]) => (
+          <div key={label as string} className="rounded-2xl bg-white/[0.035] p-4">
+            <p className="text-xs text-slate-500">{label}</p>
+            <div className="mt-1.5 text-sm font-semibold text-white">{value}</div>
+          </div>
+        ))}
+      </div>
+
+      {data.regression && (
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+          {data.windows.map((window) => (
+            <span key={window.label}>
+              {window.label}{' '}
+              {window.annualizedPct != null ? (
+                <span className={window.annualizedPct >= 0 ? 'text-emerald-300' : 'text-rose-300'}>
+                  {window.annualizedPct >= 0 ? '+' : ''}{window.annualizedPct}%
+                </span>
+              ) : (
+                <span className="text-slate-600">n/a</span>
+              )}
+              <span className="text-slate-600"> ({window.count})</span>
+            </span>
+          ))}
+          {data.windowAgreement && (
+            <span className="text-slate-600">
+              · window agreement {data.windowAgreement.agreeing}/{data.windowAgreement.total}
+            </span>
+          )}
+          <span className="text-slate-600">· 3yr base {money(data.regression.projection[2].base)} · 5yr base {money(data.regression.projection[3].base)}</span>
+        </div>
+      )}
+
+      <SaleChart data={data} nowTs={nowTs} />
+
+      {data.expert && (
+        <div className="mt-4 rounded-2xl border border-[#d7b56d]/20 bg-[#d7b56d]/[0.05] p-4">
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-[#f0d692]">Desk knowledge — expert overlay</p>
+          <ul className="mt-2 space-y-1.5">
+            {data.expert.applied.map((rule) => (
+              <li key={rule.id} className="text-xs leading-5 text-slate-300">
+                <span className="mr-2 rounded-full bg-[#d7b56d]/15 px-2 py-0.5 text-[10px] font-semibold text-[#f0d692]">{rule.effectLabel}</span>
+                {rule.rationale} <span className="text-slate-600">— {rule.author}</span>
+              </li>
+            ))}
+            {data.expert.notes.map((note, index) => (
+              <li key={index} className="text-xs leading-5 text-slate-300">
+                {note.text} <span className="text-slate-600">— {note.author}, {note.createdAt}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] text-slate-600">
+        <span className={`rounded-full border px-2.5 py-1 ${confidenceTone}`}>{data.confidence} · {data.confidenceScore}/98</span>
+        <span>
+          Multi-window log-linear regression, mean-reversion damped (τ≈18mo); scenarios = ±σ(h) widening with horizon. History, not investment advice · {data.source} · {data.pagesFetched} pages
+        </span>
+      </div>
+    </div>
   )
 }
 
@@ -182,6 +379,7 @@ function SoldBody() {
   const [make, setMake] = useState('All')
   const [sortKey, setSortKey] = useState<SortKey>('exitCount')
   const [sortAsc, setSortAsc] = useState(false)
+  const [expandedId, setExpandedId] = useState<number | null>(null)
 
   const sold = trpc.highline.sold.useQuery({ days: windowDays, limit: 200 }, { refetchInterval: 120_000 })
   const data = sold.data
@@ -259,6 +457,7 @@ function SoldBody() {
         <table className="w-full min-w-[1180px] text-left text-sm">
           <thead>
             <tr className="border-b border-white/[0.06] text-xs uppercase tracking-[0.16em] text-slate-500">
+              <th className="w-10 px-3 py-4"><span className="sr-only">History</span></th>
               <th className="px-5 py-4 font-medium">Variant</th>
               {columns.map((column) => (
                 <th key={column.key} className="px-4 py-4 font-medium">
@@ -273,7 +472,14 @@ function SoldBody() {
           </thead>
           <tbody>
             {rows.map((trend) => (
-              <tr key={trend.modelId} className="border-b border-white/[0.04] transition hover:bg-white/[0.03]">
+              <Fragment key={trend.modelId}>
+              <tr
+                onClick={() => setExpandedId((value) => (value === trend.modelId ? null : trend.modelId))}
+                className="cursor-pointer border-b border-white/[0.04] transition hover:bg-white/[0.03]"
+              >
+                <td className="px-3 py-4 text-slate-500">
+                  {expandedId === trend.modelId ? <ChevronDown className="h-4 w-4 text-[#f0d692]" /> : <ChevronRight className="h-4 w-4" />}
+                </td>
                 <td className="px-5 py-4">
                   <p className="font-semibold text-white">
                     {trend.modelFamily.toLowerCase() === trend.make.toLowerCase() ? trend.make : `${trend.make} ${trend.modelFamily}`}
@@ -290,10 +496,18 @@ function SoldBody() {
                 <td className="px-4 py-4">
                   <DriftChip pct={trend.askDriftPct} />
                 </td>
-                <td className="px-5 py-4">
+                <td className="px-5 py-4" onClick={(event) => event.stopPropagation()}>
                   <BatTrendCell modelId={trend.modelId} />
                 </td>
               </tr>
+              {expandedId === trend.modelId && (
+                <tr className="border-b border-white/[0.04] bg-white/[0.015]">
+                  <td colSpan={8} className="px-6 py-4">
+                    <VariantHistoryPanel modelId={trend.modelId} />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
         </table>

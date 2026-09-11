@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createRouter, publicQuery } from "./middleware";
 import { fetchBatComps } from "./providers/batComps";
 import { fetchVinHistory } from "./providers/marketcheck";
-import { dashboardSummary, dealRadar, listingDetail, listSupportedModels, marketStats, soldMarket } from "./queries/highline";
+import { dashboardSummary, dealerDesk, dealRadar, listingDetail, listSupportedModels, marketStats, soldMarket } from "./queries/highline";
 import { ensureHighlineReady } from "./services/bootstrap";
 import { buildVariantForecast } from "./services/forecast";
 import { latestIngestionRun, refreshListingsFromAutoDev } from "./services/ingestion";
@@ -167,5 +167,11 @@ export const highlineRouter = createRouter({
   batHistory: publicQuery.input(z.object({ modelId: z.number().int().positive() })).query(async ({ input }) => {
     await ensureHighlineReady();
     return buildVariantForecast(input.modelId);
+  }),
+
+  /** Dealer desk: One Exotics' own live inventory scored against the tracked market. */
+  desk: publicQuery.query(async () => {
+    await ensureHighlineReady();
+    return dealerDesk();
   }),
 });

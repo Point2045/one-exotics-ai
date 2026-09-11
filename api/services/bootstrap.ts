@@ -21,7 +21,9 @@ async function prepare(): Promise<HighlineStore> {
   }
 
   await ensureSupportedModelsSeeded();
-  if ((await store.totalListingsCount()) === 0) {
+  // Demo listings only in memory mode — a real database starts empty and fills
+  // from provider refreshes, never from fabricated demo rows.
+  if (store.mode === "memory" && (await store.totalListingsCount()) === 0) {
     await seedDemoData();
   }
 

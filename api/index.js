@@ -325,14 +325,14 @@ var init_dist = __esm({
         }
       }
       get headers() {
-        const cache2 = this[cacheKey];
-        if (cache2) {
-          if (!(cache2[2] instanceof Headers)) {
-            cache2[2] = new Headers(
-              cache2[2] || { "content-type": "text/plain; charset=UTF-8" }
+        const cache3 = this[cacheKey];
+        if (cache3) {
+          if (!(cache3[2] instanceof Headers)) {
+            cache3[2] = new Headers(
+              cache3[2] || { "content-type": "text/plain; charset=UTF-8" }
             );
           }
-          return cache2[2];
+          return cache3[2];
         }
         return this[getResponseCache]().headers;
       }
@@ -7038,24 +7038,24 @@ var require_umd = __commonJS({
         var INT_CACHE = {};
         var UINT_CACHE = {};
         function fromInt(value, unsigned) {
-          var obj, cachedObj, cache2;
+          var obj, cachedObj, cache3;
           if (unsigned) {
             value >>>= 0;
-            if (cache2 = 0 <= value && value < 256) {
+            if (cache3 = 0 <= value && value < 256) {
               cachedObj = UINT_CACHE[value];
               if (cachedObj) return cachedObj;
             }
             obj = fromBits(value, 0, true);
-            if (cache2) UINT_CACHE[value] = obj;
+            if (cache3) UINT_CACHE[value] = obj;
             return obj;
           } else {
             value |= 0;
-            if (cache2 = -128 <= value && value < 128) {
+            if (cache3 = -128 <= value && value < 128) {
               cachedObj = INT_CACHE[value];
               if (cachedObj) return cachedObj;
             }
             obj = fromBits(value, value < 0 ? -1 : 0, false);
-            if (cache2) INT_CACHE[value] = obj;
+            if (cache3) INT_CACHE[value] = obj;
             return obj;
           }
         }
@@ -17835,15 +17835,15 @@ var require_named_placeholders = __commonJS({
         config2.placeholder = "?";
       }
       let ncache = 100;
-      let cache2;
+      let cache3;
       if (typeof config2.cache === "number") {
         ncache = config2.cache;
       }
       if (typeof config2.cache === "object") {
-        cache2 = config2.cache;
+        cache3 = config2.cache;
       }
-      if (config2.cache !== false && !cache2) {
-        cache2 = require_lib3().createLRU({ max: ncache });
+      if (config2.cache !== false && !cache3) {
+        cache3 = require_lib3().createLRU({ max: ncache });
       }
       function toArrayParams(tree, params) {
         const arr = [];
@@ -17889,12 +17889,12 @@ var require_named_placeholders = __commonJS({
       }
       function compile(query, paramsObj) {
         let tree;
-        if (cache2 && (tree = cache2.get(query))) {
+        if (cache3 && (tree = cache3.get(query))) {
           return toArrayParams(tree, paramsObj);
         }
         tree = join2(parse4(query));
-        if (cache2) {
-          cache2.set(query, tree);
+        if (cache3) {
+          cache3.set(query, tree);
         }
         return toArrayParams(tree, paramsObj);
       }
@@ -41313,6 +41313,87 @@ async function fetchAutoDevListings() {
   return { provider: "auto.dev", listings: listings2, warnings, searches };
 }
 
+// api/providers/oneExotics.ts
+var DEALER_API = "https://www.oneexoticstampa.com/api/cars/";
+var DEALER_SITE = "https://www.oneexoticstampa.com";
+var CACHE_TTL_MS2 = 60 * 60 * 1e3;
+var cache2;
+function asString(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : void 0;
+}
+function asNumber(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value.replace(/[^0-9.]/g, ""));
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : void 0;
+  }
+  return void 0;
+}
+function normalizeCar(item) {
+  if (typeof item !== "object" || item === null) return void 0;
+  const record2 = item;
+  const id = asString(record2.id);
+  const make = asString(record2.make);
+  const model = asString(record2.model);
+  if (!id || !make || !model) return void 0;
+  const urlPath = asString(record2.url_link);
+  return {
+    id,
+    stockno: asString(record2.stockno),
+    vin: asString(record2.vin),
+    year: asNumber(record2.year),
+    make,
+    model,
+    trim: asString(record2.trim),
+    mileage: asNumber(record2.mileage),
+    price: asNumber(record2.price),
+    exteriorColor: asString(record2.ext_color),
+    interiorColor: asString(record2.int_color),
+    bodyStyle: asString(record2.body),
+    sold: asString(record2.sold) === "Sold",
+    pendingSale: asString(record2.pending_sale) === "1",
+    url: urlPath ? `${DEALER_SITE}${urlPath}` : void 0,
+    imageUrl: asString(record2.image_link),
+    carfaxUrl: asString(record2.cfx)
+  };
+}
+async function fetchDealerInventory() {
+  if (cache2 && Date.now() - cache2.at < CACHE_TTL_MS2) return cache2.cars;
+  const response = await fetch(DEALER_API, { headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error(`One Exotics feed HTTP ${response.status}`);
+  const data = await response.json();
+  if (!Array.isArray(data)) throw new Error("One Exotics feed returned a non-array payload");
+  const cars = data.map(normalizeCar).filter((car) => Boolean(car));
+  cache2 = { at: Date.now(), cars };
+  return cars;
+}
+async function fetchDealerListings() {
+  const cars = await fetchDealerInventory();
+  return cars.map((car) => ({
+    source: "oneexotics",
+    externalId: `oet-${car.id}`,
+    vin: car.vin,
+    year: car.year,
+    make: car.make,
+    model: car.model,
+    trim: car.trim,
+    title: [car.year, car.make, car.model, car.trim].filter(Boolean).join(" "),
+    price: car.sold ? void 0 : car.price,
+    mileage: car.mileage,
+    exteriorColor: car.exteriorColor,
+    interiorColor: car.interiorColor,
+    bodyStyle: car.bodyStyle,
+    sellerName: "One Exotics Luxury Vehicles LLC",
+    sellerType: "dealer",
+    city: "Tampa",
+    state: "FL",
+    url: car.url,
+    imageUrl: car.imageUrl,
+    carfaxUrl: car.carfaxUrl,
+    status: car.sold ? "sold" : "active"
+  }));
+}
+
 // api/services/matching.ts
 function normalize2(value) {
   return (value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/²/g, "2").replace(/[^a-z0-9]+/g, " ").trim();
@@ -47307,11 +47388,11 @@ async function hashQuery(sql2, params) {
 
 // node_modules/drizzle-orm/mysql-core/session.js
 var MySqlPreparedQuery = class {
-  constructor(cache2, queryMetadata, cacheConfig) {
-    this.cache = cache2;
+  constructor(cache3, queryMetadata, cacheConfig) {
+    this.cache = cache3;
     this.queryMetadata = queryMetadata;
     this.cacheConfig = cacheConfig;
-    if (cache2 && cache2.strategy() === "all" && cacheConfig === void 0) {
+    if (cache3 && cache3.strategy() === "all" && cacheConfig === void 0) {
       this.cacheConfig = { enable: true, autoInvalidate: true };
     }
     if (!this.cacheConfig?.enable) {
@@ -47590,8 +47671,8 @@ var import_mysql2 = __toESM(require_mysql2(), 1);
 // node_modules/drizzle-orm/mysql2/session.js
 import { once as once2 } from "node:events";
 var MySql2PreparedQuery = class extends MySqlPreparedQuery {
-  constructor(client, queryString, params, logger, cache2, queryMetadata, cacheConfig, fields, customResultMapper, generatedIds, returningIds) {
-    super(cache2, queryMetadata, cacheConfig);
+  constructor(client, queryString, params, logger, cache3, queryMetadata, cacheConfig, fields, customResultMapper, generatedIds, returningIds) {
+    super(cache3, queryMetadata, cacheConfig);
     this.client = client;
     this.params = params;
     this.logger = logger;
@@ -48042,6 +48123,11 @@ function createDrizzleStore() {
       const [result] = await getDb().update(listings).set({ status: "unknown", removedAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(and(...conditions));
       return Number(result.affectedRows ?? 0);
     },
+    async expireUnseenBySource(source, seenExternalIds) {
+      if (!seenExternalIds.length) return 0;
+      const [result] = await getDb().update(listings).set({ status: "unknown", removedAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(and(eq(listings.source, source), eq(listings.status, "active"), notInArray(listings.externalId, seenExternalIds)));
+      return Number(result.affectedRows ?? 0);
+    },
     async recentlyDelisted(withinDays, limit = 5e3) {
       const cutoff = new Date(Date.now() - withinDays * 864e5);
       return getDb().select().from(listings).where(
@@ -48212,6 +48298,19 @@ function createMemoryStore(tables) {
         if (listing.source !== source || listing.status !== "active") continue;
         if (listing.make !== make) continue;
         if (model && listing.model !== model) continue;
+        if (seen.has(listing.externalId)) continue;
+        tables.listings[index2] = { ...listing, status: "unknown", removedAt: now, updatedAt: now };
+        expired += 1;
+      }
+      return expired;
+    },
+    async expireUnseenBySource(source, seenExternalIds) {
+      if (!seenExternalIds.length) return 0;
+      const seen = new Set(seenExternalIds);
+      const now = /* @__PURE__ */ new Date();
+      let expired = 0;
+      for (const [index2, listing] of tables.listings.entries()) {
+        if (listing.source !== source || listing.status !== "active") continue;
         if (seen.has(listing.externalId)) continue;
         tables.listings[index2] = { ...listing, status: "unknown", removedAt: now, updatedAt: now };
         expired += 1;
@@ -48666,8 +48765,22 @@ async function refreshListingsFromAutoDev() {
       if (!search.exhausted) continue;
       expiredUnseen += await store.expireUnseenListings("auto.dev", search.make, search.model, search.externalIds);
     }
-    const sellThrough = await ingestMarketCheckSellThrough();
+    const storeMode = store.mode;
+    const sellThrough = storeMode === "memory" && process.env.VERCEL ? { configured: true, calls: 0, inserted: 0, skippedStillActive: 0, warnings: ["sell-through skipped: no persistent database in production"] } : await ingestMarketCheckSellThrough();
     if (sellThrough.warnings.length) result.warnings.push(...sellThrough.warnings);
+    try {
+      const dealerListings = await fetchDealerListings();
+      const dealerActive = dealerListings.filter((listing) => listing.status === "active");
+      for (const listing of dealerActive) {
+        const model = matchSupportedModel(listing, models);
+        await upsertListing(listing, model?.id);
+      }
+      if (dealerActive.length) {
+        await store.expireUnseenBySource("oneexotics", dealerActive.map((listing) => listing.externalId));
+      }
+    } catch (error49) {
+      result.warnings.push(`oneexotics feed: ${error49 instanceof Error ? error49.message : "fetch failed"}`);
+    }
     await rebuildModelStats();
     const valuationsCreated = await rebuildValuations();
     const status = result.listings.length ? "completed" : result.warnings.length ? "failed" : "completed";
@@ -49052,6 +49165,110 @@ async function listingDetail(id) {
   ]);
   return { ...listing, supportedModel: supportedModel ?? null, priceHistory: history, valuations };
 }
+async function dealerDesk() {
+  const store = await getStore();
+  const [cars, modelRows, activeRows, delistedRows] = await Promise.all([
+    fetchDealerInventory(),
+    store.allSupportedModels(),
+    store.activeListings(5e3),
+    store.recentlyDelisted(180, 5e3)
+  ]);
+  const marketByModel = /* @__PURE__ */ new Map();
+  const now = Date.now();
+  for (const model of modelRows) {
+    const rows = activeRows.filter((listing) => listing.modelId === model.id && listing.price && listing.source !== "oneexotics");
+    if (!rows.length) continue;
+    const prices = rows.map((listing) => listing.price).sort((a, b) => a - b);
+    const gone = delistedRows.filter((listing) => listing.modelId === model.id);
+    const durations = gone.map((listing) => {
+      const start = (listing.listedAt ?? listing.firstSeenAt)?.getTime();
+      const end = listing.removedAt?.getTime();
+      if (start == null || end == null) return null;
+      const days = Math.round((end - start) / 864e5);
+      return days >= 1 && days <= 365 ? days : null;
+    }).filter((days) => days != null).sort((a, b) => a - b);
+    const medianDays = durations.length >= 2 ? percentileOf(durations, 0.5) : null;
+    marketByModel.set(model.id, {
+      median: percentileOf(prices, 0.5),
+      // prices is non-empty here (rows.length guard above)
+      sample: rows.length,
+      demandSignal: medianDays == null ? null : medianDays <= 35 ? "fast" : medianDays <= 75 ? "balanced" : "slow"
+    });
+  }
+  const activeCars = cars.filter((car) => !car.sold);
+  const soldCars = cars.filter((car) => car.sold);
+  const units = activeCars.map((car) => {
+    const asListing = {
+      source: "oneexotics",
+      externalId: `oet-${car.id}`,
+      vin: car.vin,
+      year: car.year,
+      make: car.make,
+      model: car.model,
+      trim: car.trim,
+      title: [car.year, car.make, car.model, car.trim].filter(Boolean).join(" "),
+      price: car.price,
+      mileage: car.mileage,
+      status: "active"
+    };
+    const model = matchSupportedModel(asListing, modelRows);
+    const market = model ? marketByModel.get(model.id) : void 0;
+    const vsMarketPct = market && car.price ? Math.round((car.price - market.median) / market.median * 1e3) / 10 : null;
+    const verdict = vsMarketPct == null ? "untracked" : vsMarketPct >= 5 ? "rich" : vsMarketPct <= -5 ? "opportunity" : "market";
+    return {
+      id: car.id,
+      stockno: car.stockno ?? null,
+      vin: car.vin ?? null,
+      year: car.year ?? null,
+      make: car.make,
+      model: car.model,
+      trim: car.trim ?? null,
+      price: car.price ?? null,
+      mileage: car.mileage ?? null,
+      url: car.url ?? null,
+      imageUrl: car.imageUrl ?? null,
+      pendingSale: car.pendingSale,
+      matchedVariant: model ? model.variant : null,
+      modelId: model ? model.id : null,
+      marketMedian: market?.median ?? null,
+      marketSample: market?.sample ?? null,
+      vsMarketPct,
+      demandSignal: market?.demandSignal ?? null,
+      verdict
+    };
+  }).sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
+  const soldGroups = /* @__PURE__ */ new Map();
+  for (const car of soldCars) {
+    const key = `${car.make} ${car.model}`;
+    const group = soldGroups.get(key) ?? { make: car.make, model: car.model, count: 0, prices: [] };
+    group.count += 1;
+    if (car.price) group.prices.push(car.price);
+    soldGroups.set(key, group);
+  }
+  const soldMix = [...soldGroups.values()].map((group) => ({
+    make: group.make,
+    model: group.model,
+    count: group.count,
+    medianPrice: group.prices.length ? percentileOf(group.prices.sort((a, b) => a - b), 0.5) : null
+  })).sort((a, b) => b.count - a.count);
+  const priced = activeCars.filter((car) => car.price);
+  const makeCounts = /* @__PURE__ */ new Map();
+  for (const car of activeCars) makeCounts.set(car.make, (makeCounts.get(car.make) ?? 0) + 1);
+  return {
+    computedAt: new Date(now).toISOString(),
+    dealer: "One Exotics Luxury Vehicles LLC \xB7 Tampa, FL",
+    summary: {
+      activeUnits: activeCars.length,
+      pendingSales: activeCars.filter((car) => car.pendingSale).length,
+      soldRecords: soldCars.length,
+      totalAsk: priced.reduce((sum, car) => sum + car.price, 0),
+      medianAsk: priced.length ? percentileOf(priced.map((car) => car.price).sort((a, b) => a - b), 0.5) : null,
+      makes: [...makeCounts.entries()].map(([make, unitsCount]) => ({ make, units: unitsCount, sharePct: Math.round(unitsCount / activeCars.length * 1e3) / 10 })).sort((a, b) => b.units - a.units)
+    },
+    units,
+    soldMix
+  };
+}
 
 // api/services/bootstrap.ts
 import path4 from "node:path";
@@ -49320,7 +49537,7 @@ async function prepare() {
     }
   }
   await ensureSupportedModelsSeeded();
-  if (await store.totalListingsCount() === 0) {
+  if (store.mode === "memory" && await store.totalListingsCount() === 0) {
     await seedDemoData();
   }
   return store;
@@ -49854,6 +50071,11 @@ var highlineRouter = createRouter({
   batHistory: publicQuery.input(external_exports.object({ modelId: external_exports.number().int().positive() })).query(async ({ input }) => {
     await ensureHighlineReady();
     return buildVariantForecast(input.modelId);
+  }),
+  /** Dealer desk: One Exotics' own live inventory scored against the tracked market. */
+  desk: publicQuery.query(async () => {
+    await ensureHighlineReady();
+    return dealerDesk();
   })
 });
 
@@ -49878,6 +50100,18 @@ app.use("/api/trpc/*", async (c) => {
     router: appRouter,
     createContext
   });
+});
+app.get("/api/cron/refresh", async (c) => {
+  const secret = process.env.CRON_SECRET;
+  if (secret && c.req.header("authorization") !== `Bearer ${secret}`) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  try {
+    const result = await refreshListingsFromAutoDev();
+    return c.json({ ok: true, result });
+  } catch (error48) {
+    return c.json({ ok: false, error: error48 instanceof Error ? error48.message : "refresh failed" }, 500);
+  }
 });
 app.all("/api/*", (c) => c.json({ error: "Not Found" }, 404));
 var boot_default = app;

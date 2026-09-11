@@ -303,8 +303,8 @@ function TrendChart({ car, horizon }: { car: Car; horizon: number }) {
       <svg viewBox={`0 0 ${width} ${height}`} className="h-[270px] w-full" role="img" aria-label={`${car.name} market trend chart`}>
         <defs>
           <linearGradient id="trendFill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#d7b56d" stopOpacity="0.34" />
-            <stop offset="100%" stopColor="#d7b56d" stopOpacity="0" />
+            <stop offset="0%" stopColor="#a63ec2" stopOpacity="0.34" />
+            <stop offset="100%" stopColor="#a63ec2" stopOpacity="0" />
           </linearGradient>
           <filter id="goldGlow" x="-30%" y="-30%" width="160%" height="160%">
             <feGaussianBlur stdDeviation="4" result="blur" />
@@ -319,7 +319,7 @@ function TrendChart({ car, horizon }: { car: Car; horizon: number }) {
           return <line key={line} x1={left} x2={width - right} y1={y} y2={y} stroke="rgba(255,255,255,0.08)" strokeDasharray="4 7" />
         })}
         <polygon points={areaPoints} fill="url(#trendFill)" />
-        <polyline points={actualPoints} fill="none" stroke="#d7b56d" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" filter="url(#goldGlow)" />
+        <polyline points={actualPoints} fill="none" stroke="#a63ec2" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" filter="url(#goldGlow)" />
         <line
           x1={lastPoint[0]}
           y1={lastPoint[1]}
@@ -362,7 +362,7 @@ function MetricBar({ label, value, display }: { label: string; value: number; di
         <span className="font-semibold text-white">{display}</span>
       </div>
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.07]">
-        <div className="h-full rounded-full bg-gradient-to-r from-[#8f6b2f] via-[#d8b56d] to-[#fff0bc]" style={{ width: `${Math.max(4, Math.min(100, value))}%` }} />
+        <div className="h-full rounded-full bg-gradient-to-r from-[#8f6b2f] via-[#d8b56d] to-[#eccdfd]" style={{ width: `${Math.max(4, Math.min(100, value))}%` }} />
       </div>
     </div>
   )
@@ -370,15 +370,15 @@ function MetricBar({ label, value, display }: { label: string; value: number; di
 
 function AppHeader() {
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.06] bg-[#08080a]/78 backdrop-blur-2xl">
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.06] bg-[#191a20]/78 backdrop-blur-2xl">
       <div className="mx-auto flex h-[76px] max-w-7xl items-center justify-between px-5 sm:px-8">
         <a href="#top" className="group flex items-center gap-3" aria-label="Highline Index home">
-          <span className="grid h-10 w-10 place-items-center rounded-full border border-[#d7b56d]/40 bg-[#d7b56d]/10 text-[#f0d692] shadow-[0_0_34px_rgba(215,181,109,0.18)]">
+          <span className="grid h-10 w-10 place-items-center rounded-full border border-[#a63ec2]/40 bg-[#a63ec2]/10 text-[#d9a8f2] shadow-[0_0_34px_rgba(215,181,109,0.18)]">
             <Gauge className="h-5 w-5" />
           </span>
           <span className="leading-none">
             <span className="block text-[17px] font-semibold tracking-[0.02em] text-white">Highline</span>
-            <span className="mt-1 block text-[11px] uppercase tracking-[0.32em] text-[#d7b56d]">Index</span>
+            <span className="mt-1 block text-[11px] uppercase tracking-[0.32em] text-[#a63ec2]">Index</span>
           </span>
         </a>
         <nav className="hidden items-center gap-8 text-sm text-slate-300 lg:flex" aria-label="Primary navigation">
@@ -396,6 +396,9 @@ function AppHeader() {
           </a>
           <a href="/sold" className="outline-button hidden !py-2.5 sm:inline-flex">
             Sold
+          </a>
+          <a href="/desk" className="outline-button hidden !py-2.5 sm:inline-flex">
+            Desk
           </a>
           <a href="/radar" className="luxury-button hidden sm:inline-flex">
             Open live radar
@@ -451,7 +454,7 @@ function Hero() {
         <div className="relative z-10">
           <div className="hero-image-card">
             <img src={heroImage} alt="Luxury performance cars in a dark showroom" className="h-[520px] w-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#08080a] via-transparent to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#191a20] via-transparent to-transparent" />
             <div className="absolute left-5 top-5 rounded-full border border-white/15 bg-black/35 px-4 py-2 text-xs uppercase tracking-[0.24em] text-white backdrop-blur-xl">
               Live-feel market model
             </div>
@@ -474,7 +477,7 @@ function Hero() {
                   </div>
                   <div>
                     <p className="text-slate-500">Spec premium</p>
-                    <p className="mt-1 text-xl font-semibold text-[#f0d692]">+18%</p>
+                    <p className="mt-1 text-xl font-semibold text-[#d9a8f2]">+18%</p>
                   </div>
                   <div>
                     <p className="text-slate-500">Liquidity</p>
@@ -487,7 +490,7 @@ function Hero() {
                 <p className="mt-2 text-3xl font-semibold text-emerald-300">+2.9%</p>
                 <div className="mt-4 flex h-12 items-end gap-1.5">
                   {[34, 48, 39, 58, 52, 70, 64, 82].map((height, index) => (
-                    <span key={index} className="w-full rounded-t bg-gradient-to-t from-[#745423] to-[#f0d692]" style={{ height: `${height}%` }} />
+                    <span key={index} className="w-full rounded-t bg-gradient-to-t from-[#745423] to-[#d9a8f2]" style={{ height: `${height}%` }} />
                   ))}
                 </div>
               </div>
@@ -510,7 +513,7 @@ function MarketTicker() {
               <span className="font-medium text-white">{model}</span>
               <span className={move.startsWith('+') ? 'text-emerald-300' : 'text-rose-300'}>{move}</span>
               <span className="text-slate-500">{note}</span>
-              <span className="h-1 w-1 rounded-full bg-[#d7b56d]" />
+              <span className="h-1 w-1 rounded-full bg-[#a63ec2]" />
             </div>
           ))}
         </div>
@@ -539,7 +542,7 @@ function CategoryShowcase() {
             <img src={card.image} alt={`${card.title} category`} className="h-72 w-full object-cover transition duration-700 group-hover:scale-105" />
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/35 to-transparent" />
             <div className="absolute inset-x-0 bottom-0 p-7">
-              <p className="text-xs uppercase tracking-[0.24em] text-[#f0d692]">{card.metric}</p>
+              <p className="text-xs uppercase tracking-[0.24em] text-[#d9a8f2]">{card.metric}</p>
               <h3 className="mt-2 text-3xl font-semibold text-white">{card.title}</h3>
               <p className="mt-3 max-w-sm text-sm leading-6 text-slate-300">{card.copy}</p>
             </div>
@@ -553,7 +556,7 @@ function CategoryShowcase() {
 function FeatureGrid() {
   return (
     <section id="signals" className="relative overflow-hidden border-y border-white/[0.06] bg-[#0d0d10] py-24 lg:py-32">
-      <div className="absolute left-1/2 top-0 h-px w-[70%] -translate-x-1/2 bg-gradient-to-r from-transparent via-[#d7b56d]/60 to-transparent" />
+      <div className="absolute left-1/2 top-0 h-px w-[70%] -translate-x-1/2 bg-gradient-to-r from-transparent via-[#a63ec2]/60 to-transparent" />
       <div className="mx-auto max-w-7xl px-5 sm:px-8">
         <div className="max-w-3xl">
           <div className="section-kicker">A sharper lens</div>
@@ -632,7 +635,7 @@ function DashboardDemo() {
               <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Watchlist</p>
               <h3 className="mt-1 text-lg font-semibold text-white">Highline radar</h3>
             </div>
-            <span className="rounded-full bg-[#d7b56d]/10 px-3 py-1 text-xs text-[#f0d692]">{cars.length} cars</span>
+            <span className="rounded-full bg-[#a63ec2]/10 px-3 py-1 text-xs text-[#d9a8f2]">{cars.length} cars</span>
           </div>
           <label className="relative mt-6 block">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
@@ -640,7 +643,7 @@ function DashboardDemo() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search model, year, segment..."
-              className="h-12 w-full rounded-2xl border border-white/[0.08] bg-white/[0.04] pl-11 pr-4 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-[#d7b56d]/50 focus:bg-white/[0.06]"
+              className="h-12 w-full rounded-2xl border border-white/[0.08] bg-white/[0.04] pl-11 pr-4 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-[#a63ec2]/50 focus:bg-white/[0.06]"
             />
           </label>
           <div className="mt-5 space-y-3">
@@ -696,7 +699,7 @@ function DashboardDemo() {
               </div>
               <div className="dashboard-stat">
                 <p>Spec premium</p>
-                <strong className="text-[#f0d692]">+{selectedCar.specPremium}%</strong>
+                <strong className="text-[#d9a8f2]">+{selectedCar.specPremium}%</strong>
               </div>
               <div className="dashboard-stat">
                 <p>Liquidity</p>
@@ -718,13 +721,13 @@ function DashboardDemo() {
                       key={option}
                       type="button"
                       onClick={() => setHorizon(option)}
-                      className={`rounded-full px-4 py-2 text-sm transition ${horizon === option ? 'bg-[#d7b56d] text-black shadow-[0_8px_28px_rgba(215,181,109,0.22)]' : 'text-slate-400 hover:text-white'}`}
+                      className={`rounded-full px-4 py-2 text-sm transition ${horizon === option ? 'bg-[#a63ec2] text-black shadow-[0_8px_28px_rgba(215,181,109,0.22)]' : 'text-slate-400 hover:text-white'}`}
                     >
                       {option}M
                     </button>
                   ))}
                 </div>
-                <button type="button" className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-4 py-2 text-sm text-slate-300 transition hover:border-[#d7b56d]/40 hover:text-white">
+                <button type="button" className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-4 py-2 text-sm text-slate-300 transition hover:border-[#a63ec2]/40 hover:text-white">
                   <Bell className="h-4 w-4" />
                   Create alert
                 </button>
@@ -739,7 +742,7 @@ function DashboardDemo() {
               <MetricBar label="Ownership efficiency" value={100 - selectedCar.carryCost * 3} display={formatK(selectedCar.carryCost)} />
               <div className="rounded-3xl border border-white/[0.08] bg-white/[0.035] p-5">
                 <div className="flex items-center gap-3">
-                  <span className="grid h-10 w-10 place-items-center rounded-full bg-[#d7b56d]/10 text-[#f0d692]">
+                  <span className="grid h-10 w-10 place-items-center rounded-full bg-[#a63ec2]/10 text-[#d9a8f2]">
                     <BadgeCheck className="h-5 w-5" />
                   </span>
                   <div>
@@ -806,10 +809,10 @@ function DealRadar() {
                 </div>
               </article>
             ))}
-            <div className="rounded-[2rem] border border-[#d7b56d]/20 bg-gradient-to-br from-[#d7b56d]/12 to-white/[0.03] p-7">
+            <div className="rounded-[2rem] border border-[#a63ec2]/20 bg-gradient-to-br from-[#a63ec2]/12 to-white/[0.03] p-7">
               <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.26em] text-[#f0d692]">Collector workflow</p>
+                  <p className="text-xs uppercase tracking-[0.26em] text-[#d9a8f2]">Collector workflow</p>
                   <h3 className="mt-2 text-2xl font-semibold text-white">Turn every alert into a decision memo.</h3>
                   <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">
                     See the comps, option adjustment, ownership cost, downside band and negotiation range before you call the seller.
@@ -843,7 +846,7 @@ function Pricing() {
       <div className="mt-14 grid gap-5 lg:grid-cols-3">
         {plans.map((plan) => (
           <article key={plan.name} className={`price-card ${plan.featured ? 'price-card-featured' : ''}`}>
-            {plan.featured && <div className="absolute right-6 top-6 rounded-full bg-[#d7b56d] px-3 py-1 text-xs font-semibold text-black">Recommended</div>}
+            {plan.featured && <div className="absolute right-6 top-6 rounded-full bg-[#a63ec2] px-3 py-1 text-xs font-semibold text-black">Recommended</div>}
             <h3 className="text-2xl font-semibold text-white">{plan.name}</h3>
             <p className="mt-2 text-sm text-slate-500">{plan.note}</p>
             <div className="mt-7 flex items-end gap-2">
@@ -905,7 +908,7 @@ function Footer() {
     <footer className="border-t border-white/[0.06] bg-[#070708]">
       <div className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-10 text-sm text-slate-500 sm:px-8 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3">
-          <span className="grid h-9 w-9 place-items-center rounded-full border border-[#d7b56d]/30 bg-[#d7b56d]/10 text-[#f0d692]">
+          <span className="grid h-9 w-9 place-items-center rounded-full border border-[#a63ec2]/30 bg-[#a63ec2]/10 text-[#d9a8f2]">
             <Star className="h-4 w-4" />
           </span>
           <div>
@@ -927,7 +930,7 @@ function Footer() {
 
 export default function Home() {
   return (
-    <main className="min-h-screen overflow-hidden bg-[#08080a] text-white">
+    <main className="min-h-screen overflow-hidden bg-[#191a20] text-white">
       <AppHeader />
       <Hero />
       <MarketTicker />

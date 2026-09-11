@@ -68,14 +68,14 @@ function SignalChips({ market }: { market: Market }) {
 
 function MarketsHeader() {
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.06] bg-[#08080a]/84 backdrop-blur-2xl">
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.06] bg-[#191a20]/84 backdrop-blur-2xl">
       <div className="mx-auto flex h-[76px] max-w-[1500px] items-center justify-between px-5 sm:px-8">
         <div className="flex items-center gap-4">
           <Link to="/" className="outline-button !px-3 !py-2" aria-label="Back to landing page">
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <div>
-            <p className="text-[11px] uppercase tracking-[0.3em] text-[#d7b56d]">Highline Index</p>
+            <p className="text-[11px] uppercase tracking-[0.3em] text-[#a63ec2]">Highline Index</p>
             <h1 className="mt-1 text-lg font-semibold text-white">Variant Markets</h1>
           </div>
         </div>
@@ -87,8 +87,14 @@ function MarketsHeader() {
             Sold
           </Link>
           <Link
+            to="/desk"
+            className="flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs text-slate-300 transition hover:bg-white/[0.08]"
+          >
+            Desk
+          </Link>
+          <Link
             to="/radar"
-            className="flex items-center gap-2 rounded-full border border-[#d7b56d]/30 bg-[#d7b56d]/10 px-3 py-1.5 text-xs text-[#f0d692] transition hover:bg-[#d7b56d]/20"
+            className="flex items-center gap-2 rounded-full border border-[#a63ec2]/30 bg-[#a63ec2]/10 px-3 py-1.5 text-xs text-[#d9a8f2] transition hover:bg-[#a63ec2]/20"
           >
             <RadarIcon className="h-3.5 w-3.5" />
             Deal Radar
@@ -163,7 +169,7 @@ function MarketsBody() {
             key={item}
             type="button"
             onClick={() => setMake(item)}
-            className={`rounded-full px-4 py-2 text-sm transition ${make === item ? 'bg-[#d7b56d] font-semibold text-black' : 'bg-white/[0.045] text-slate-300 hover:bg-white/[0.08]'}`}
+            className={`rounded-full px-4 py-2 text-sm transition ${make === item ? 'bg-[#a63ec2] font-semibold text-black' : 'bg-white/[0.045] text-slate-300 hover:bg-white/[0.08]'}`}
           >
             {item === 'Mercedes-Benz' ? 'G-Class' : item}
           </button>
@@ -177,7 +183,7 @@ function MarketsBody() {
               <th className="px-5 py-4 font-medium">Variant</th>
               {columns.map((column) => (
                 <th key={column.key} className="px-4 py-4 font-medium">
-                  <button type="button" onClick={() => toggleSort(column.key)} className={`inline-flex items-center gap-1.5 transition hover:text-white ${sortKey === column.key ? 'text-[#f0d692]' : ''}`}>
+                  <button type="button" onClick={() => toggleSort(column.key)} className={`inline-flex items-center gap-1.5 transition hover:text-white ${sortKey === column.key ? 'text-[#d9a8f2]' : ''}`}>
                     {column.label}
                     <ArrowUpDown className="h-3 w-3" />
                   </button>
@@ -245,7 +251,7 @@ function MarketsBody() {
 
       <div className="mt-8 flex flex-col items-start justify-between gap-4 rounded-[2rem] border border-white/[0.08] bg-white/[0.03] p-6 sm:flex-row sm:items-center">
         <div className="flex items-start gap-3">
-          <ShieldCheck className="mt-0.5 h-5 w-5 text-[#f0d692]" />
+          <ShieldCheck className="mt-0.5 h-5 w-5 text-[#d9a8f2]" />
           <p className="max-w-2xl text-sm leading-6 text-slate-400">
             High days-on-market with flat ask spreads means sellers are anchoring — that's where negotiate signals concentrate. Tight spreads with low DOM mean efficient pricing; edge there is rare and usually provenance-driven.
           </p>
@@ -264,7 +270,7 @@ function MarketsBody() {
 
 export default function Markets() {
   return (
-    <main className="min-h-screen bg-[#08080a] text-white">
+    <main className="min-h-screen bg-[#191a20] text-white">
       <MarketsHeader />
       <MarketsBody />
     </main>

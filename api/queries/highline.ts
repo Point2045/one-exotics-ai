@@ -1,7 +1,9 @@
 import { autoDevConfigured } from "../providers/autoDev";
 import { parseBotConfigured } from "../providers/batComps";
 import { marketCheckConfigured } from "../providers/marketcheck";
+import { fetchDealerInventory } from "../providers/oneExotics";
 import { latestIngestionRun } from "../services/ingestion";
+import { matchSupportedModel } from "../services/matching";
 import { getStore } from "../services/store";
 
 const actionPriority = { pursue: 0, inspect: 1, negotiate: 2, pass: 3 } as const;
@@ -373,4 +375,136 @@ export async function listingDetail(id: number) {
   ]);
 
   return { ...listing, supportedModel: supportedModel ?? null, priceHistory: history, valuations };
+}
+
+/**
+ * Dealer desk: One Exotics' own live inventory scored against the market.
+ * Active units get a per-unit verdict (rich / at market / opportunity) vs the
+ * tracked-market median for their variant, plus the demand signal from
+ * observed sell-through. Sold records carry no dates in their feed, so the
+ * sold side is analyzed as mix/volume; dated dealer velocity accrues from our
+ * own snapshots once persistence is live.
+ */
+export async function dealerDesk() {
+  const store = await getStore();
+  const [cars, modelRows, activeRows, delistedRows] = await Promise.all([
+    fetchDealerInventory(),
+    store.allSupportedModels(),
+    store.activeListings(5000),
+    store.recentlyDelisted(180, 5000),
+  ]);
+
+  // Market context per supported variant, excluding the dealer's own rows so
+  // the desk benchmarks against the rest of the market.
+  const marketByModel = new Map<number, { median: number; sample: number; demandSignal: "fast" | "balanced" | "slow" | null }>();
+  const now = Date.now();
+  for (const model of modelRows) {
+    const rows = activeRows.filter((listing) => listing.modelId === model.id && listing.price && listing.source !== "oneexotics");
+    if (!rows.length) continue;
+    const prices = rows.map((listing) => listing.price!).sort((a, b) => a - b);
+    const gone = delistedRows.filter((listing) => listing.modelId === model.id);
+    const durations = gone
+      .map((listing) => {
+        const start = (listing.listedAt ?? listing.firstSeenAt)?.getTime();
+        const end = listing.removedAt?.getTime();
+        if (start == null || end == null) return null;
+        const days = Math.round((end - start) / 86_400_000);
+        return days >= 1 && days <= 365 ? days : null;
+      })
+      .filter((days): days is number => days != null)
+      .sort((a, b) => a - b);
+    const medianDays = durations.length >= 2 ? percentileOf(durations, 0.5) : null;
+    marketByModel.set(model.id, {
+      median: percentileOf(prices, 0.5)!, // prices is non-empty here (rows.length guard above)
+      sample: rows.length,
+      demandSignal: medianDays == null ? null : medianDays <= 35 ? "fast" : medianDays <= 75 ? "balanced" : "slow",
+    });
+  }
+
+  const activeCars = cars.filter((car) => !car.sold);
+  const soldCars = cars.filter((car) => car.sold);
+
+  const units = activeCars
+    .map((car) => {
+      const asListing = {
+        source: "oneexotics",
+        externalId: `oet-${car.id}`,
+        vin: car.vin,
+        year: car.year,
+        make: car.make,
+        model: car.model,
+        trim: car.trim,
+        title: [car.year, car.make, car.model, car.trim].filter(Boolean).join(" "),
+        price: car.price,
+        mileage: car.mileage,
+        status: "active" as const,
+      };
+      const model = matchSupportedModel(asListing, modelRows);
+      const market = model ? marketByModel.get(model.id) : undefined;
+      const vsMarketPct =
+        market && car.price ? Math.round(((car.price - market.median) / market.median) * 1000) / 10 : null;
+      const verdict: "rich" | "market" | "opportunity" | "untracked" =
+        vsMarketPct == null ? "untracked" : vsMarketPct >= 5 ? "rich" : vsMarketPct <= -5 ? "opportunity" : "market";
+      return {
+        id: car.id,
+        stockno: car.stockno ?? null,
+        vin: car.vin ?? null,
+        year: car.year ?? null,
+        make: car.make,
+        model: car.model,
+        trim: car.trim ?? null,
+        price: car.price ?? null,
+        mileage: car.mileage ?? null,
+        url: car.url ?? null,
+        imageUrl: car.imageUrl ?? null,
+        pendingSale: car.pendingSale,
+        matchedVariant: model ? model.variant : null,
+        modelId: model ? model.id : null,
+        marketMedian: market?.median ?? null,
+        marketSample: market?.sample ?? null,
+        vsMarketPct,
+        demandSignal: market?.demandSignal ?? null,
+        verdict,
+      };
+    })
+    .sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
+
+  // Sold side: what the desk actually moves, by model line.
+  const soldGroups = new Map<string, { make: string; model: string; count: number; prices: number[] }>();
+  for (const car of soldCars) {
+    const key = `${car.make} ${car.model}`;
+    const group = soldGroups.get(key) ?? { make: car.make, model: car.model, count: 0, prices: [] };
+    group.count += 1;
+    if (car.price) group.prices.push(car.price);
+    soldGroups.set(key, group);
+  }
+  const soldMix = [...soldGroups.values()]
+    .map((group) => ({
+      make: group.make,
+      model: group.model,
+      count: group.count,
+      medianPrice: group.prices.length ? percentileOf(group.prices.sort((a, b) => a - b), 0.5) : null,
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  const priced = activeCars.filter((car) => car.price);
+  const makeCounts = new Map<string, number>();
+  for (const car of activeCars) makeCounts.set(car.make, (makeCounts.get(car.make) ?? 0) + 1);
+
+  return {
+    computedAt: new Date(now).toISOString(),
+    dealer: "One Exotics Luxury Vehicles LLC · Tampa, FL",
+    summary: {
+      activeUnits: activeCars.length,
+      pendingSales: activeCars.filter((car) => car.pendingSale).length,
+      soldRecords: soldCars.length,
+      totalAsk: priced.reduce((sum, car) => sum + car.price!, 0),
+      medianAsk: priced.length ? percentileOf(priced.map((car) => car.price!).sort((a, b) => a - b), 0.5) : null,
+      makes: [...makeCounts.entries()]
+        .map(([make, unitsCount]) => ({ make, units: unitsCount, sharePct: Math.round((unitsCount / activeCars.length) * 1000) / 10 }))
+        .sort((a, b) => b.units - a.units),
+    },
+    units,
+    soldMix,
+  };
 }

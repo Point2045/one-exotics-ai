@@ -64,7 +64,7 @@ function FilterNumberInput({
         onChange={(event) => onChange(event.target.value.replace(/[^0-9]/g, ''))}
         inputMode="numeric"
         placeholder={placeholder}
-        className="h-10 w-full rounded-xl border border-white/[0.08] bg-black/25 px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-[#d7b56d]/50"
+        className="h-10 w-full rounded-xl border border-white/[0.08] bg-black/25 px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-[#a63ec2]/50"
       />
     </label>
   )
@@ -75,7 +75,7 @@ function ToggleChip({ active, onClick, children }: { active: boolean; onClick: (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full border px-3.5 py-1.5 text-xs transition ${active ? 'border-[#d7b56d]/50 bg-[#d7b56d]/12 text-[#f0d692]' : 'border-white/[0.08] bg-white/[0.03] text-slate-400 hover:text-white'}`}
+      className={`rounded-full border px-3.5 py-1.5 text-xs transition ${active ? 'border-[#a63ec2]/50 bg-[#a63ec2]/12 text-[#d9a8f2]' : 'border-white/[0.08] bg-white/[0.03] text-slate-400 hover:text-white'}`}
     >
       {children}
     </button>
@@ -136,7 +136,7 @@ function ProvenanceBadges({ deal }: { deal: Deal }) {
           {dom === 0 ? 'Listed today' : `${dom}d on market`}
         </span>
       )}
-      {deal.cpo && <span className="rounded-full border border-[#d7b56d]/30 bg-[#d7b56d]/10 px-2.5 py-1 text-[#f0d692]">Factory CPO</span>}
+      {deal.cpo && <span className="rounded-full border border-[#a63ec2]/30 bg-[#a63ec2]/10 px-2.5 py-1 text-[#d9a8f2]">Factory CPO</span>}
       {accidents > 0 && (
         <span className="rounded-full border border-rose-400/25 bg-rose-400/10 px-2.5 py-1 text-rose-300">
           {accidents} accident{accidents > 1 ? 's' : ''}
@@ -153,14 +153,14 @@ function ProvenanceBadges({ deal }: { deal: Deal }) {
 
 function RadarHeader() {
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.06] bg-[#08080a]/84 backdrop-blur-2xl">
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.06] bg-[#191a20]/84 backdrop-blur-2xl">
       <div className="mx-auto flex h-[76px] max-w-[1500px] items-center justify-between px-5 sm:px-8">
         <div className="flex items-center gap-4">
           <Link to="/" className="outline-button !px-3 !py-2" aria-label="Back to landing page">
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <div>
-            <p className="text-[11px] uppercase tracking-[0.3em] text-[#d7b56d]">Highline Index</p>
+            <p className="text-[11px] uppercase tracking-[0.3em] text-[#a63ec2]">Highline Index</p>
             <h1 className="mt-1 text-lg font-semibold text-white">Live Deal Radar</h1>
           </div>
         </div>
@@ -168,7 +168,10 @@ function RadarHeader() {
           <Link to="/sold" className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-slate-300 transition hover:bg-white/[0.08]">
             Sold
           </Link>
-          <Link to="/markets" className="rounded-full border border-[#d7b56d]/30 bg-[#d7b56d]/10 px-3 py-1.5 text-[#f0d692] transition hover:bg-[#d7b56d]/20">
+          <Link to="/desk" className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-slate-300 transition hover:bg-white/[0.08]">
+            Desk
+          </Link>
+          <Link to="/markets" className="rounded-full border border-[#a63ec2]/30 bg-[#a63ec2]/10 px-3 py-1.5 text-[#d9a8f2] transition hover:bg-[#a63ec2]/20">
             Markets
           </Link>
           <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5">United States</span>
@@ -275,7 +278,7 @@ function VinDecoder() {
   return (
     <section className="rounded-[2rem] border border-white/[0.08] bg-white/[0.03] p-6">
       <div className="flex items-center gap-3">
-        <span className="grid h-10 w-10 place-items-center rounded-full bg-[#d7b56d]/10 text-[#f0d692]">
+        <span className="grid h-10 w-10 place-items-center rounded-full bg-[#a63ec2]/10 text-[#d9a8f2]">
           <Gauge className="h-5 w-5" />
         </span>
         <div>
@@ -289,7 +292,7 @@ function VinDecoder() {
           onChange={(event) => setVin(event.target.value.toUpperCase())}
           maxLength={17}
           placeholder="Enter 17-character VIN"
-          className="h-12 min-w-0 flex-1 rounded-2xl border border-white/[0.08] bg-black/25 px-4 text-sm uppercase tracking-[0.08em] text-white outline-none placeholder:text-slate-600 focus:border-[#d7b56d]/50"
+          className="h-12 min-w-0 flex-1 rounded-2xl border border-white/[0.08] bg-black/25 px-4 text-sm uppercase tracking-[0.08em] text-white outline-none placeholder:text-slate-600 focus:border-[#a63ec2]/50"
         />
         <button type="button" onClick={submit} className="luxury-button px-5">
           Decode
@@ -385,8 +388,8 @@ function VinReportCard({ report }: { report: VinReport }) {
 function DealImage({ imageUrl, title }: { imageUrl?: string | null; title: string }) {
   if (!imageUrl) {
     return (
-      <div className="grid h-full min-h-52 place-items-center bg-gradient-to-br from-[#20180b] via-[#0d0d10] to-[#08080a]">
-        <Gauge className="h-10 w-10 text-[#d7b56d]/60" />
+      <div className="grid h-full min-h-52 place-items-center bg-gradient-to-br from-[#20180b] via-[#0d0d10] to-[#191a20]">
+        <Gauge className="h-10 w-10 text-[#a63ec2]/60" />
       </div>
     )
   }
@@ -399,7 +402,7 @@ function DealCard({ deal, selected, onSelect }: { deal: Deal; selected: boolean;
     <button
       type="button"
       onClick={onSelect}
-      className={`group overflow-hidden rounded-[1.75rem] border text-left transition duration-200 hover:-translate-y-1 ${selected ? 'border-[#d7b56d]/55 bg-[#d7b56d]/[0.08] shadow-[0_24px_70px_rgba(0,0,0,0.32)]' : 'border-white/[0.08] bg-white/[0.035] hover:border-[#d7b56d]/30'}`}
+      className={`group overflow-hidden rounded-[1.75rem] border text-left transition duration-200 hover:-translate-y-1 ${selected ? 'border-[#a63ec2]/55 bg-[#a63ec2]/[0.08] shadow-[0_24px_70px_rgba(0,0,0,0.32)]' : 'border-white/[0.08] bg-white/[0.035] hover:border-[#a63ec2]/30'}`}
     >
       <div className="grid md:grid-cols-[220px_1fr]">
         <div className="relative overflow-hidden">
@@ -464,7 +467,7 @@ function DetailPanel({ id, onClose }: { id: number; onClose: () => void }) {
     <aside className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-auto rounded-[2rem] border border-white/[0.08] bg-[#0d0d10] p-6 shadow-[0_30px_100px_rgba(0,0,0,0.42)]">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs uppercase tracking-[0.24em] text-[#d7b56d]">Decision memo</p>
+          <p className="text-xs uppercase tracking-[0.24em] text-[#a63ec2]">Decision memo</p>
           <h2 className="mt-2 text-2xl font-semibold text-white">{data?.title ?? 'Loading…'}</h2>
         </div>
         <button type="button" onClick={onClose} className="outline-button !p-2" aria-label="Close detail">
@@ -533,7 +536,7 @@ function DetailPanel({ id, onClose }: { id: number; onClose: () => void }) {
               </div>
               <div className="rounded-2xl bg-white/[0.04] p-4">
                 <p className="text-xs text-slate-500">Certification</p>
-                <p className={`mt-1 text-lg font-semibold ${data.cpo ? 'text-[#f0d692]' : 'text-white'}`}>{data.cpo ? 'Factory CPO' : 'None'}</p>
+                <p className={`mt-1 text-lg font-semibold ${data.cpo ? 'text-[#d9a8f2]' : 'text-white'}`}>{data.cpo ? 'Factory CPO' : 'None'}</p>
               </div>
             </div>
           </div>
@@ -562,8 +565,8 @@ function DetailPanel({ id, onClose }: { id: number; onClose: () => void }) {
           </div>
 
           {batComps.data?.configured === true && batComps.data.matched && (
-            <div className="rounded-2xl border border-[#d7b56d]/20 bg-[#d7b56d]/[0.05] p-4">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-[#f0d692]">
+            <div className="rounded-2xl border border-[#a63ec2]/20 bg-[#a63ec2]/[0.05] p-4">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-[#d9a8f2]">
                 Sold comps · Bring a Trailer
               </h3>
               <div className="mt-3 grid grid-cols-3 gap-2 text-center">
@@ -752,7 +755,7 @@ function RadarBody() {
                     key={item}
                     type="button"
                     onClick={() => setMake(item)}
-                    className={`rounded-full px-4 py-2 text-sm transition ${make === item ? 'bg-[#d7b56d] font-semibold text-black' : 'bg-white/[0.045] text-slate-300 hover:bg-white/[0.08]'}`}
+                    className={`rounded-full px-4 py-2 text-sm transition ${make === item ? 'bg-[#a63ec2] font-semibold text-black' : 'bg-white/[0.045] text-slate-300 hover:bg-white/[0.08]'}`}
                   >
                     {item === 'Mercedes-Benz' ? 'G-Class' : item}
                   </button>
@@ -764,7 +767,7 @@ function RadarBody() {
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Search variant, trim, city…"
-                  className="h-11 w-full rounded-full border border-white/[0.08] bg-black/25 pl-11 pr-4 text-sm text-white outline-none placeholder:text-slate-600 focus:border-[#d7b56d]/50"
+                  className="h-11 w-full rounded-full border border-white/[0.08] bg-black/25 pl-11 pr-4 text-sm text-white outline-none placeholder:text-slate-600 focus:border-[#a63ec2]/50"
                 />
               </label>
             </div>
@@ -774,7 +777,7 @@ function RadarBody() {
                   key={item.value}
                   type="button"
                   onClick={() => setAction(item.value)}
-                  className={`rounded-full border px-4 py-2 text-sm transition ${action === item.value ? 'border-[#d7b56d]/50 bg-[#d7b56d]/12 text-[#f0d692]' : 'border-white/[0.08] bg-white/[0.03] text-slate-400 hover:text-white'}`}
+                  className={`rounded-full border px-4 py-2 text-sm transition ${action === item.value ? 'border-[#a63ec2]/50 bg-[#a63ec2]/12 text-[#d9a8f2]' : 'border-white/[0.08] bg-white/[0.03] text-slate-400 hover:text-white'}`}
                 >
                   {item.label}
                 </button>
@@ -782,7 +785,7 @@ function RadarBody() {
               <button
                 type="button"
                 onClick={() => setShowFilters((value) => !value)}
-                className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm transition ${showFilters || activeFilterCount > 0 ? 'border-[#d7b56d]/50 bg-[#d7b56d]/12 text-[#f0d692]' : 'border-white/[0.08] bg-white/[0.03] text-slate-400 hover:text-white'}`}
+                className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm transition ${showFilters || activeFilterCount > 0 ? 'border-[#a63ec2]/50 bg-[#a63ec2]/12 text-[#d9a8f2]' : 'border-white/[0.08] bg-white/[0.03] text-slate-400 hover:text-white'}`}
               >
                 <SlidersHorizontal className="h-3.5 w-3.5" />
                 Filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''}
@@ -870,7 +873,7 @@ function RadarBody() {
 
 export default function Radar() {
   return (
-    <main className="min-h-screen bg-[#08080a] text-white">
+    <main className="min-h-screen bg-[#191a20] text-white">
       <RadarHeader />
       <RadarBody />
       <footer className="border-t border-white/[0.06] px-5 py-8 text-center text-xs leading-5 text-slate-500 sm:px-8">

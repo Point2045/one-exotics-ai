@@ -4,6 +4,7 @@ import type { HttpBindings } from "@hono/node-server";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { appRouter } from "./router";
 import { createContext } from "./context";
+import { refreshListingsFromAutoDev } from "./services/ingestion";
 import { env } from "./lib/env";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
@@ -17,6 +18,21 @@ app.use("/api/trpc/*", async (c) => {
     createContext,
   });
 });
+// Vercel Cron entry — daily refresh so listings, price history, and sell-through
+// exits accumulate in the database instead of depending on manual refreshes.
+app.get("/api/cron/refresh", async (c) => {
+  const secret = process.env.CRON_SECRET;
+  if (secret && c.req.header("authorization") !== `Bearer ${secret}`) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  try {
+    const result = await refreshListingsFromAutoDev();
+    return c.json({ ok: true, result });
+  } catch (error) {
+    return c.json({ ok: false, error: error instanceof Error ? error.message : "refresh failed" }, 500);
+  }
+});
+
 app.all("/api/*", (c) => c.json({ error: "Not Found" }, 404));
 
 export default app;

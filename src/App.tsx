@@ -3,6 +3,7 @@ import Home from './pages/Home'
 import Radar from './pages/Radar'
 import Markets from './pages/Markets'
 import Sold from './pages/Sold'
+import Desk from './pages/Desk'
 
 export default function App() {
   return (
@@ -11,6 +12,7 @@ export default function App() {
       <Route path="/radar" element={<Radar />} />
       <Route path="/markets" element={<Markets />} />
       <Route path="/sold" element={<Sold />} />
+      <Route path="/desk" element={<Desk />} />
     </Routes>
   )
 }

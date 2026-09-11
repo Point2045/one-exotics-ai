@@ -1,6 +1,7 @@
 import { HIGHLINE_MODEL_DEFINITIONS } from "@contracts/highline";
 import { autoDevConfigured, fetchAutoDevListings } from "../providers/autoDev";
 import { fetchSellThroughRecents, HUB_ZIPS, marketCheckConfigured } from "../providers/marketcheck";
+import { fetchDealerListings } from "../providers/oneExotics";
 import type { NormalizedListing } from "../providers/types";
 import { matchSupportedModel } from "./matching";
 import { getStore } from "./store";
@@ -181,8 +182,31 @@ export async function refreshListingsFromAutoDev() {
     }
 
     // MarketCheck (optional): rotating recents pull injects real sell-through observations.
-    const sellThrough = await ingestMarketCheckSellThrough();
+    // Skip in production memory-mode: with no database the observations die with the
+    // instance, so spending free-tier calls on them is pure waste.
+    const storeMode = store.mode;
+    const sellThrough =
+      storeMode === "memory" && process.env.VERCEL
+        ? { configured: true, calls: 0, inserted: 0, skippedStillActive: 0, warnings: ["sell-through skipped: no persistent database in production"] }
+        : await ingestMarketCheckSellThrough();
     if (sellThrough.warnings.length) result.warnings.push(...sellThrough.warnings);
+
+    // Dealer desk: snapshot One Exotics' own feed every refresh. Active units
+    // upsert; units that vanish from the feed are expired so dealer velocity
+    // accumulates with dates going forward.
+    try {
+      const dealerListings = await fetchDealerListings();
+      const dealerActive = dealerListings.filter((listing) => listing.status === "active");
+      for (const listing of dealerActive) {
+        const model = matchSupportedModel(listing, models);
+        await upsertListing(listing, model?.id);
+      }
+      if (dealerActive.length) {
+        await store.expireUnseenBySource("oneexotics", dealerActive.map((listing) => listing.externalId));
+      }
+    } catch (error) {
+      result.warnings.push(`oneexotics feed: ${error instanceof Error ? error.message : "fetch failed"}`);
+    }
 
     await rebuildModelStats();
     const valuationsCreated = await rebuildValuations();

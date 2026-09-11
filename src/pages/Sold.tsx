@@ -118,20 +118,20 @@ function SaleChart({ data, nowTs }: { data: BatHistory; nowTs: number }) {
         />
       ))}
 
-      {data.quarterly.length > 1 && <path d={quarterlyPath} fill="none" stroke="#d7b56d" strokeWidth="2" />}
+      {data.quarterly.length > 1 && <path d={quarterlyPath} fill="none" stroke="#a63ec2" strokeWidth="2" />}
       {data.quarterly.map((bucket) => (
-        <circle key={bucket.quarter} cx={x(bucket.ts)} cy={y(bucket.median)} r="3" fill="#d7b56d" />
+        <circle key={bucket.quarter} cx={x(bucket.ts)} cy={y(bucket.median)} r="3" fill="#a63ec2" />
       ))}
 
-      {curvePath && <path d={curvePath} fill="none" stroke="#f0d692" strokeWidth="1.5" strokeDasharray="6 4" />}
+      {curvePath && <path d={curvePath} fill="none" stroke="#d9a8f2" strokeWidth="1.5" strokeDasharray="6 4" />}
 
       {data.regression?.projection.filter((proj) => proj.monthsAhead <= 36).map((proj) => (
         <g key={proj.monthsAhead}>
-          <line x1={x(proj.ts)} x2={x(proj.ts)} y1={y(proj.bear)} y2={y(proj.bull)} stroke="#f0d692" strokeWidth="1.5" />
-          <line x1={x(proj.ts) - 5} x2={x(proj.ts) + 5} y1={y(proj.bear)} y2={y(proj.bear)} stroke="#f0d692" strokeWidth="1.5" />
-          <line x1={x(proj.ts) - 5} x2={x(proj.ts) + 5} y1={y(proj.bull)} y2={y(proj.bull)} stroke="#f0d692" strokeWidth="1.5" />
-          <circle cx={x(proj.ts)} cy={y(proj.base)} r="3.5" fill="#f0d692" />
-          <text x={x(proj.ts)} y={y(proj.bull) - 6} textAnchor="middle" fontSize="10" fill="#f0d692">
+          <line x1={x(proj.ts)} x2={x(proj.ts)} y1={y(proj.bear)} y2={y(proj.bull)} stroke="#d9a8f2" strokeWidth="1.5" />
+          <line x1={x(proj.ts) - 5} x2={x(proj.ts) + 5} y1={y(proj.bear)} y2={y(proj.bear)} stroke="#d9a8f2" strokeWidth="1.5" />
+          <line x1={x(proj.ts) - 5} x2={x(proj.ts) + 5} y1={y(proj.bull)} y2={y(proj.bull)} stroke="#d9a8f2" strokeWidth="1.5" />
+          <circle cx={x(proj.ts)} cy={y(proj.base)} r="3.5" fill="#d9a8f2" />
+          <text x={x(proj.ts)} y={y(proj.bull) - 6} textAnchor="middle" fontSize="10" fill="#d9a8f2">
             +{proj.monthsAhead}mo {compactMoney(proj.base)}
           </text>
         </g>
@@ -162,7 +162,7 @@ function VariantHistoryPanel({ modelId }: { modelId: number }) {
   return (
     <div className="px-2 py-4">
       <p className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
-        <LineChart className="h-3.5 w-3.5 text-[#f0d692]" />
+        <LineChart className="h-3.5 w-3.5 text-[#d9a8f2]" />
         Auction history &amp; price projection · {data.baTModel}
       </p>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
@@ -229,12 +229,12 @@ function VariantHistoryPanel({ modelId }: { modelId: number }) {
       <SaleChart data={data} nowTs={nowTs} />
 
       {data.expert && (
-        <div className="mt-4 rounded-2xl border border-[#d7b56d]/20 bg-[#d7b56d]/[0.05] p-4">
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-[#f0d692]">Desk knowledge — expert overlay</p>
+        <div className="mt-4 rounded-2xl border border-[#a63ec2]/20 bg-[#a63ec2]/[0.05] p-4">
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-[#d9a8f2]">Desk knowledge — expert overlay</p>
           <ul className="mt-2 space-y-1.5">
             {data.expert.applied.map((rule) => (
               <li key={rule.id} className="text-xs leading-5 text-slate-300">
-                <span className="mr-2 rounded-full bg-[#d7b56d]/15 px-2 py-0.5 text-[10px] font-semibold text-[#f0d692]">{rule.effectLabel}</span>
+                <span className="mr-2 rounded-full bg-[#a63ec2]/15 px-2 py-0.5 text-[10px] font-semibold text-[#d9a8f2]">{rule.effectLabel}</span>
                 {rule.rationale} <span className="text-slate-600">— {rule.author}</span>
               </li>
             ))}
@@ -294,18 +294,24 @@ function BatTrendCell({ modelId }: { modelId: number }) {
 
 function SoldHeader() {
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.06] bg-[#08080a]/84 backdrop-blur-2xl">
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.06] bg-[#191a20]/84 backdrop-blur-2xl">
       <div className="mx-auto flex h-[76px] max-w-[1500px] items-center justify-between px-5 sm:px-8">
         <div className="flex items-center gap-4">
           <Link to="/" className="outline-button !px-3 !py-2" aria-label="Back to landing page">
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <div>
-            <p className="text-[11px] uppercase tracking-[0.3em] text-[#d7b56d]">Highline Index</p>
+            <p className="text-[11px] uppercase tracking-[0.3em] text-[#a63ec2]">Highline Index</p>
             <h1 className="mt-1 text-lg font-semibold text-white">Sold &amp; Departed</h1>
           </div>
         </div>
         <div className="hidden items-center gap-2 md:flex">
+          <Link
+            to="/desk"
+            className="flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs text-slate-300 transition hover:bg-white/[0.08]"
+          >
+            Desk
+          </Link>
           <Link
             to="/markets"
             className="flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs text-slate-300 transition hover:bg-white/[0.08]"
@@ -314,7 +320,7 @@ function SoldHeader() {
           </Link>
           <Link
             to="/radar"
-            className="flex items-center gap-2 rounded-full border border-[#d7b56d]/30 bg-[#d7b56d]/10 px-3 py-1.5 text-xs text-[#f0d692] transition hover:bg-[#d7b56d]/20"
+            className="flex items-center gap-2 rounded-full border border-[#a63ec2]/30 bg-[#a63ec2]/10 px-3 py-1.5 text-xs text-[#d9a8f2] transition hover:bg-[#a63ec2]/20"
           >
             <RadarIcon className="h-3.5 w-3.5" />
             Deal Radar
@@ -328,12 +334,12 @@ function SoldHeader() {
 function SoldFeedCard({ listing }: { listing: SoldListing }) {
   const body = (
     <>
-      <div className="relative h-40 overflow-hidden bg-gradient-to-br from-[#20180b] via-[#0d0d10] to-[#08080a]">
+      <div className="relative h-40 overflow-hidden bg-gradient-to-br from-[#20180b] via-[#0d0d10] to-[#191a20]">
         {listing.imageUrl ? (
           <img src={listing.imageUrl} alt={listing.title} className="h-full w-full object-cover opacity-80" loading="lazy" />
         ) : (
           <div className="grid h-full place-items-center">
-            <History className="h-8 w-8 text-[#d7b56d]/50" />
+            <History className="h-8 w-8 text-[#a63ec2]/50" />
           </div>
         )}
         <span className="absolute left-3 top-3 rounded-full border border-white/[0.1] bg-black/60 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-slate-300 backdrop-blur">
@@ -364,7 +370,7 @@ function SoldFeedCard({ listing }: { listing: SoldListing }) {
     </>
   )
   const className =
-    'block overflow-hidden rounded-[1.5rem] border border-white/[0.08] bg-white/[0.03] transition hover:border-[#d7b56d]/30'
+    'block overflow-hidden rounded-[1.5rem] border border-white/[0.08] bg-white/[0.03] transition hover:border-[#a63ec2]/30'
   return listing.url ? (
     <a href={listing.url} target="_blank" rel="noreferrer" className={className}>
       {body}
@@ -428,7 +434,7 @@ function SoldBody() {
               key={option.value}
               type="button"
               onClick={() => setWindowDays(option.value)}
-              className={`rounded-full px-4 py-2 text-sm transition ${windowDays === option.value ? 'bg-[#d7b56d] font-semibold text-black' : 'bg-white/[0.045] text-slate-300 hover:bg-white/[0.08]'}`}
+              className={`rounded-full px-4 py-2 text-sm transition ${windowDays === option.value ? 'bg-[#a63ec2] font-semibold text-black' : 'bg-white/[0.045] text-slate-300 hover:bg-white/[0.08]'}`}
             >
               {option.label}
             </button>
@@ -446,7 +452,7 @@ function SoldBody() {
             key={item}
             type="button"
             onClick={() => setMake(item)}
-            className={`rounded-full px-4 py-2 text-sm transition ${make === item ? 'bg-[#d7b56d] font-semibold text-black' : 'bg-white/[0.045] text-slate-300 hover:bg-white/[0.08]'}`}
+            className={`rounded-full px-4 py-2 text-sm transition ${make === item ? 'bg-[#a63ec2] font-semibold text-black' : 'bg-white/[0.045] text-slate-300 hover:bg-white/[0.08]'}`}
           >
             {item === 'Mercedes-Benz' ? 'G-Class' : item}
           </button>
@@ -461,7 +467,7 @@ function SoldBody() {
               <th className="px-5 py-4 font-medium">Variant</th>
               {columns.map((column) => (
                 <th key={column.key} className="px-4 py-4 font-medium">
-                  <button type="button" onClick={() => toggleSort(column.key)} className={`inline-flex items-center gap-1.5 transition hover:text-white ${sortKey === column.key ? 'text-[#f0d692]' : ''}`}>
+                  <button type="button" onClick={() => toggleSort(column.key)} className={`inline-flex items-center gap-1.5 transition hover:text-white ${sortKey === column.key ? 'text-[#d9a8f2]' : ''}`}>
                     {column.label}
                     <ArrowUpDown className="h-3 w-3" />
                   </button>
@@ -478,7 +484,7 @@ function SoldBody() {
                 className="cursor-pointer border-b border-white/[0.04] transition hover:bg-white/[0.03]"
               >
                 <td className="px-3 py-4 text-slate-500">
-                  {expandedId === trend.modelId ? <ChevronDown className="h-4 w-4 text-[#f0d692]" /> : <ChevronRight className="h-4 w-4" />}
+                  {expandedId === trend.modelId ? <ChevronDown className="h-4 w-4 text-[#d9a8f2]" /> : <ChevronRight className="h-4 w-4" />}
                 </td>
                 <td className="px-5 py-4">
                   <p className="font-semibold text-white">
@@ -542,7 +548,7 @@ function SoldBody() {
 
 export default function Sold() {
   return (
-    <main className="min-h-screen bg-[#08080a] text-white">
+    <main className="min-h-screen bg-[#191a20] text-white">
       <SoldHeader />
       <SoldBody />
     </main>

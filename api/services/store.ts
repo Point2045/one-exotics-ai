@@ -59,6 +59,8 @@ export interface HighlineStore {
   expireListingsBySource(source: string): Promise<void>;
   /** Mark active listings absent from the provider's latest full result as unknown (likely sold). */
   expireUnseenListings(source: string, make: string, model: string | undefined, seenExternalIds: string[]): Promise<number>;
+  /** Same, but scoped to an entire source (feeds that span all makes, e.g. the dealer's own). */
+  expireUnseenBySource(source: string, seenExternalIds: string[]): Promise<number>;
   /** Listings that left the market within the last N days (likely sold, sometimes withdrawn), most recent first. */
   recentlyDelisted(withinDays: number, limit?: number): Promise<Listing[]>;
   hasListingsBySource(source: string): Promise<boolean>;
@@ -157,6 +159,15 @@ function createDrizzleStore(): HighlineStore {
         .update(listings)
         .set({ status: "unknown", removedAt: new Date(), updatedAt: new Date() })
         .where(and(...conditions));
+      return Number((result as { affectedRows?: number }).affectedRows ?? 0);
+    },
+
+    async expireUnseenBySource(source, seenExternalIds) {
+      if (!seenExternalIds.length) return 0;
+      const [result] = await getDb()
+        .update(listings)
+        .set({ status: "unknown", removedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(listings.source, source), eq(listings.status, "active"), notInArray(listings.externalId, seenExternalIds)));
       return Number((result as { affectedRows?: number }).affectedRows ?? 0);
     },
 
@@ -385,6 +396,20 @@ function createMemoryStore(tables: MemoryTables): HighlineStore {
         if (listing.source !== source || listing.status !== "active") continue;
         if (listing.make !== make) continue;
         if (model && listing.model !== model) continue;
+        if (seen.has(listing.externalId)) continue;
+        tables.listings[index] = { ...listing, status: "unknown", removedAt: now, updatedAt: now };
+        expired += 1;
+      }
+      return expired;
+    },
+
+    async expireUnseenBySource(source, seenExternalIds) {
+      if (!seenExternalIds.length) return 0;
+      const seen = new Set(seenExternalIds);
+      const now = new Date();
+      let expired = 0;
+      for (const [index, listing] of tables.listings.entries()) {
+        if (listing.source !== source || listing.status !== "active") continue;
         if (seen.has(listing.externalId)) continue;
         tables.listings[index] = { ...listing, status: "unknown", removedAt: now, updatedAt: now };
         expired += 1;

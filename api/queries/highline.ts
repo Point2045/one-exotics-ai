@@ -149,11 +149,20 @@ export async function dealRadar(filters: DealFilters) {
     }));
 }
 
+/**
+ * Standard linear-interpolation percentile (same convention as numpy /
+ * statistics.median): for even-sized sets the median is the average of the
+ * two middle values. This convention is what a human reproduces by hand
+ * from the comp table — nearest-rank would silently disagree.
+ */
 function percentileOf(values: number[], fraction: number) {
   const sorted = values.filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
   if (!sorted.length) return null;
-  const index = Math.min(sorted.length - 1, Math.max(0, Math.floor((sorted.length - 1) * fraction)));
-  return sorted[index];
+  const position = (sorted.length - 1) * fraction;
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  if (lower === upper) return sorted[lower];
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
 }
 
 export async function marketStats() {
@@ -459,16 +468,25 @@ export async function dealerDesk() {
   // garbage verdicts (a 2024 GT-R is not "+148% rich" vs a median of R35s from
   // 2009), so per-unit we prefer a ±1 model-year cohort and fall back to the
   // variant-wide median only when the cohort is too thin.
+  // Market context per supported variant, excluding the dealer's own rows so
+  // the desk benchmarks against the rest of the market. Full comp rows are
+  // kept (not just prices) so every benchmark can be drilled down to the
+  // exact listings behind it — trust requires inspectability. Comps are
+  // bucketed by model year too: a variant-wide median spanning 15 model
+  // years produces garbage verdicts (a 2024 GT-R is not "+148% rich" vs a
+  // median of R35s from 2009), so per-unit we prefer a ±1 model-year cohort
+  // and fall back to wider sets only when the cohort is too thin.
+  type CompRow = (typeof activeRows)[number];
   const marketByModel = new Map<
     number,
-    { median: number; sample: number; byYear: Map<number, number[]>; demandSignal: "fast" | "balanced" | "slow" | null }
+    { rows: CompRow[]; demandSignal: "fast" | "balanced" | "slow" | null }
   >();
   // Family-level fallback (e.g. all 488s, all Huracáns): in memory-mode the
   // store is a single refresh snapshot, so thinner variants (488 Spider,
   // 720S Spider, Ghost…) can have zero comps. Benchmarking against sibling
   // variants is directionally useful and beats "No market data yet"; the
   // "family" basis label keeps the weaker benchmark visible in the UI.
-  const marketByFamily = new Map<string, { prices: number[]; byYear: Map<number, number[]> }>();
+  const marketByFamily = new Map<string, CompRow[]>();
   const now = Date.now();
   for (const model of modelRows) {
     const rows = activeRows.filter(
@@ -479,23 +497,9 @@ export async function dealerDesk() {
         !listing.sellerName?.toLowerCase().includes("one exotics"),
     );
     if (!rows.length) continue;
-    const family = marketByFamily.get(`${model.make}|${model.modelFamily}`) ?? { prices: [], byYear: new Map<number, number[]>() };
+    const family = marketByFamily.get(`${model.make}|${model.modelFamily}`) ?? [];
     marketByFamily.set(`${model.make}|${model.modelFamily}`, family);
-    for (const listing of rows) {
-      family.prices.push(listing.price!);
-      if (!listing.year) continue;
-      const bucket = family.byYear.get(listing.year) ?? [];
-      bucket.push(listing.price!);
-      family.byYear.set(listing.year, bucket);
-    }
-    const prices = rows.map((listing) => listing.price!).sort((a, b) => a - b);
-    const byYear = new Map<number, number[]>();
-    for (const listing of rows) {
-      if (!listing.year) continue;
-      const bucket = byYear.get(listing.year) ?? [];
-      bucket.push(listing.price!);
-      byYear.set(listing.year, bucket);
-    }
+    family.push(...rows);
     const gone = delistedRows.filter((listing) => listing.modelId === model.id);
     const durations = gone
       .map((listing) => {
@@ -509,13 +513,10 @@ export async function dealerDesk() {
       .sort((a, b) => a - b);
     const medianDays = durations.length >= 2 ? percentileOf(durations, 0.5) : null;
     marketByModel.set(model.id, {
-      median: percentileOf(prices, 0.5)!, // prices is non-empty here (rows.length guard above)
-      sample: rows.length,
-      byYear,
+      rows,
       demandSignal: medianDays == null ? null : medianDays <= 35 ? "fast" : medianDays <= 75 ? "balanced" : "slow",
     });
   }
-  for (const family of marketByFamily.values()) family.prices.sort((a, b) => a - b);
 
 
   const activeCars = cars.filter((car) => !car.sold);
@@ -539,51 +540,59 @@ export async function dealerDesk() {
       const model = matchSupportedModel(asListing, modelRows);
       const market = model ? marketByModel.get(model.id) : undefined;
       // Benchmark ladder: ±1 model-year cohort within the variant (min 3) →
-      // variant-wide median → same ladder one level up within the model
-      // family (sibling variants, e.g. 488 GTB comps for a 488 Spider).
-      let benchmarkMedian: number | null = null;
-      let benchmarkSample = 0;
+      // variant-wide set → same ladder one level up within the model family
+      // (sibling variants, e.g. 488 GTB comps for a 488 Spider). compRows is
+      // the exact listing set behind the number — it ships with the payload
+      // so anyone can inspect and verify every comp.
+      let compRows: CompRow[] = [];
       let benchmarkBasis: "year cohort" | "variant" | "family" | null = null;
       if (market) {
         if (car.year) {
-          const cohort: number[] = [];
-          for (const year of [car.year - 1, car.year, car.year + 1]) cohort.push(...(market.byYear.get(year) ?? []));
+          const cohort = market.rows.filter((listing) => listing.year && Math.abs(listing.year - car.year!) <= 1);
           if (cohort.length >= 3) {
-            benchmarkMedian = percentileOf(cohort.sort((a, b) => a - b), 0.5);
-            benchmarkSample = cohort.length;
+            compRows = cohort;
             benchmarkBasis = "year cohort";
           }
         }
-        if (benchmarkMedian == null) {
-          benchmarkMedian = market.median;
-          benchmarkSample = market.sample;
+        if (!compRows.length) {
+          compRows = market.rows;
           benchmarkBasis = "variant";
         }
       }
-      if (benchmarkMedian == null && model) {
-        const family = marketByFamily.get(`${model.make}|${model.modelFamily}`);
-        if (family && family.prices.length) {
+      if (!compRows.length && model) {
+        const familyRows = marketByFamily.get(`${model.make}|${model.modelFamily}`) ?? [];
+        if (familyRows.length) {
           if (car.year) {
-            const cohort: number[] = [];
-            for (const year of [car.year - 1, car.year, car.year + 1]) cohort.push(...(family.byYear.get(year) ?? []));
+            const cohort = familyRows.filter((listing) => listing.year && Math.abs(listing.year - car.year!) <= 1);
             if (cohort.length >= 3) {
-              benchmarkMedian = percentileOf(cohort.sort((a, b) => a - b), 0.5);
-              benchmarkSample = cohort.length;
+              compRows = cohort;
               benchmarkBasis = "family";
             }
           }
-          if (benchmarkMedian == null) {
-            benchmarkMedian = percentileOf(family.prices, 0.5);
-            benchmarkSample = family.prices.length;
+          if (!compRows.length) {
+            compRows = familyRows;
             benchmarkBasis = "family";
           }
         }
       }
+      const compPrices = compRows.map((listing) => listing.price!).sort((a, b) => a - b);
+      const rawMedian = compPrices.length ? percentileOf(compPrices, 0.5) : null;
+      const benchmarkMedian = rawMedian != null ? Math.round(rawMedian) : null;
+      const benchmarkSample = compPrices.length;
       const vsMarketPct =
         // `|| 0` normalizes -0, which superjson would otherwise serialize as the string "-0".
         benchmarkMedian && car.price ? Math.round(((car.price - benchmarkMedian) / benchmarkMedian) * 1000) / 10 || 0 : null;
       const verdict: "rich" | "market" | "opportunity" | "untracked" =
         vsMarketPct == null ? "untracked" : vsMarketPct >= 5 ? "rich" : vsMarketPct <= -5 ? "opportunity" : "market";
+      // Data-quality warnings surface the limits of each benchmark honestly.
+      const warnings: string[] = [];
+      if (benchmarkMedian != null) {
+        if (benchmarkSample < 3) warnings.push("thin tape — fewer than 3 comps, directional only");
+        if (benchmarkBasis === "family") warnings.push("family benchmark — sibling variants, not exact model");
+        if (compPrices.length >= 2 && compPrices[compPrices.length - 1] / compPrices[0] > 1.6) {
+          warnings.push("wide comp spread — min/max differ by more than 60%");
+        }
+      }
       return {
         id: car.id,
         stockno: car.stockno ?? null,
@@ -601,7 +610,29 @@ export async function dealerDesk() {
         modelId: model ? model.id : null,
         marketMedian: benchmarkMedian,
         marketSample: benchmarkMedian != null ? benchmarkSample : null,
-        marketBasis: benchmarkBasis,
+        marketBasis: benchmarkMedian != null ? benchmarkBasis : null,
+        marketStats:
+          compPrices.length >= 2
+            ? {
+                min: compPrices[0],
+                p25: Math.round(percentileOf(compPrices, 0.25)!), // compPrices non-empty here (length >= 2 guard)
+                p75: Math.round(percentileOf(compPrices, 0.75)!),
+                max: compPrices[compPrices.length - 1],
+              }
+            : null,
+        warnings,
+        comps: compRows
+          .map((listing) => ({
+            id: listing.id,
+            year: listing.year ?? null,
+            title: listing.title,
+            price: listing.price ?? null,
+            mileage: listing.mileage ?? null,
+            url: listing.url ?? null,
+            source: listing.source,
+            sellerName: listing.sellerName ?? null,
+          }))
+          .sort((a, b) => (a.price ?? 0) - (b.price ?? 0)),
         vsMarketPct,
         demandSignal: market?.demandSignal ?? null,
         verdict,
@@ -631,11 +662,21 @@ export async function dealerDesk() {
   const makeCounts = new Map<string, number>();
   for (const car of activeCars) makeCounts.set(car.make, (makeCounts.get(car.make) ?? 0) + 1);
 
+  // Provenance: how big the market snapshot behind these benchmarks is.
+  const trackedMarketListings = activeRows.filter(
+    (listing) => listing.source !== "oneexotics" && !listing.sellerName?.toLowerCase().includes("one exotics"),
+  ).length;
+
   return {
     computedAt: new Date(now).toISOString(),
     dealer: "One Exotics Luxury Vehicles LLC · Tampa, FL",
     feedSource,
     feedError,
+    market: {
+      trackedListings: trackedMarketListings,
+      storeMode: store.mode,
+      asOf: new Date(now).toISOString(),
+    },
     summary: {
       activeUnits: activeCars.length,
       pendingSales: activeCars.filter((car) => car.pendingSale).length,

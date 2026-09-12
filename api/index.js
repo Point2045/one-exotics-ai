@@ -49052,8 +49052,11 @@ async function dealRadar(filters) {
 function percentileOf(values, fraction) {
   const sorted = values.filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
   if (!sorted.length) return null;
-  const index2 = Math.min(sorted.length - 1, Math.max(0, Math.floor((sorted.length - 1) * fraction)));
-  return sorted[index2];
+  const position = (sorted.length - 1) * fraction;
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  if (lower === upper) return sorted[lower];
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
 }
 async function marketStats() {
   const store = await getStore();
@@ -49279,23 +49282,9 @@ async function dealerDesk() {
       (listing) => listing.modelId === model.id && listing.price && listing.source !== "oneexotics" && !listing.sellerName?.toLowerCase().includes("one exotics")
     );
     if (!rows.length) continue;
-    const family = marketByFamily.get(`${model.make}|${model.modelFamily}`) ?? { prices: [], byYear: /* @__PURE__ */ new Map() };
+    const family = marketByFamily.get(`${model.make}|${model.modelFamily}`) ?? [];
     marketByFamily.set(`${model.make}|${model.modelFamily}`, family);
-    for (const listing of rows) {
-      family.prices.push(listing.price);
-      if (!listing.year) continue;
-      const bucket = family.byYear.get(listing.year) ?? [];
-      bucket.push(listing.price);
-      family.byYear.set(listing.year, bucket);
-    }
-    const prices = rows.map((listing) => listing.price).sort((a, b) => a - b);
-    const byYear = /* @__PURE__ */ new Map();
-    for (const listing of rows) {
-      if (!listing.year) continue;
-      const bucket = byYear.get(listing.year) ?? [];
-      bucket.push(listing.price);
-      byYear.set(listing.year, bucket);
-    }
+    family.push(...rows);
     const gone = delistedRows.filter((listing) => listing.modelId === model.id);
     const durations = gone.map((listing) => {
       const start = (listing.listedAt ?? listing.firstSeenAt)?.getTime();
@@ -49306,14 +49295,10 @@ async function dealerDesk() {
     }).filter((days) => days != null).sort((a, b) => a - b);
     const medianDays = durations.length >= 2 ? percentileOf(durations, 0.5) : null;
     marketByModel.set(model.id, {
-      median: percentileOf(prices, 0.5),
-      // prices is non-empty here (rows.length guard above)
-      sample: rows.length,
-      byYear,
+      rows,
       demandSignal: medianDays == null ? null : medianDays <= 35 ? "fast" : medianDays <= 75 ? "balanced" : "slow"
     });
   }
-  for (const family of marketByFamily.values()) family.prices.sort((a, b) => a - b);
   const activeCars = cars.filter((car) => !car.sold);
   const soldCars = cars.filter((car) => car.sold);
   const units = activeCars.map((car) => {
@@ -49332,49 +49317,54 @@ async function dealerDesk() {
     };
     const model = matchSupportedModel(asListing, modelRows);
     const market = model ? marketByModel.get(model.id) : void 0;
-    let benchmarkMedian = null;
-    let benchmarkSample = 0;
+    let compRows = [];
     let benchmarkBasis = null;
     if (market) {
       if (car.year) {
-        const cohort = [];
-        for (const year2 of [car.year - 1, car.year, car.year + 1]) cohort.push(...market.byYear.get(year2) ?? []);
+        const cohort = market.rows.filter((listing) => listing.year && Math.abs(listing.year - car.year) <= 1);
         if (cohort.length >= 3) {
-          benchmarkMedian = percentileOf(cohort.sort((a, b) => a - b), 0.5);
-          benchmarkSample = cohort.length;
+          compRows = cohort;
           benchmarkBasis = "year cohort";
         }
       }
-      if (benchmarkMedian == null) {
-        benchmarkMedian = market.median;
-        benchmarkSample = market.sample;
+      if (!compRows.length) {
+        compRows = market.rows;
         benchmarkBasis = "variant";
       }
     }
-    if (benchmarkMedian == null && model) {
-      const family = marketByFamily.get(`${model.make}|${model.modelFamily}`);
-      if (family && family.prices.length) {
+    if (!compRows.length && model) {
+      const familyRows = marketByFamily.get(`${model.make}|${model.modelFamily}`) ?? [];
+      if (familyRows.length) {
         if (car.year) {
-          const cohort = [];
-          for (const year2 of [car.year - 1, car.year, car.year + 1]) cohort.push(...family.byYear.get(year2) ?? []);
+          const cohort = familyRows.filter((listing) => listing.year && Math.abs(listing.year - car.year) <= 1);
           if (cohort.length >= 3) {
-            benchmarkMedian = percentileOf(cohort.sort((a, b) => a - b), 0.5);
-            benchmarkSample = cohort.length;
+            compRows = cohort;
             benchmarkBasis = "family";
           }
         }
-        if (benchmarkMedian == null) {
-          benchmarkMedian = percentileOf(family.prices, 0.5);
-          benchmarkSample = family.prices.length;
+        if (!compRows.length) {
+          compRows = familyRows;
           benchmarkBasis = "family";
         }
       }
     }
+    const compPrices = compRows.map((listing) => listing.price).sort((a, b) => a - b);
+    const rawMedian = compPrices.length ? percentileOf(compPrices, 0.5) : null;
+    const benchmarkMedian = rawMedian != null ? Math.round(rawMedian) : null;
+    const benchmarkSample = compPrices.length;
     const vsMarketPct = (
       // `|| 0` normalizes -0, which superjson would otherwise serialize as the string "-0".
       benchmarkMedian && car.price ? Math.round((car.price - benchmarkMedian) / benchmarkMedian * 1e3) / 10 || 0 : null
     );
     const verdict = vsMarketPct == null ? "untracked" : vsMarketPct >= 5 ? "rich" : vsMarketPct <= -5 ? "opportunity" : "market";
+    const warnings = [];
+    if (benchmarkMedian != null) {
+      if (benchmarkSample < 3) warnings.push("thin tape \u2014 fewer than 3 comps, directional only");
+      if (benchmarkBasis === "family") warnings.push("family benchmark \u2014 sibling variants, not exact model");
+      if (compPrices.length >= 2 && compPrices[compPrices.length - 1] / compPrices[0] > 1.6) {
+        warnings.push("wide comp spread \u2014 min/max differ by more than 60%");
+      }
+    }
     return {
       id: car.id,
       stockno: car.stockno ?? null,
@@ -49392,7 +49382,25 @@ async function dealerDesk() {
       modelId: model ? model.id : null,
       marketMedian: benchmarkMedian,
       marketSample: benchmarkMedian != null ? benchmarkSample : null,
-      marketBasis: benchmarkBasis,
+      marketBasis: benchmarkMedian != null ? benchmarkBasis : null,
+      marketStats: compPrices.length >= 2 ? {
+        min: compPrices[0],
+        p25: Math.round(percentileOf(compPrices, 0.25)),
+        // compPrices non-empty here (length >= 2 guard)
+        p75: Math.round(percentileOf(compPrices, 0.75)),
+        max: compPrices[compPrices.length - 1]
+      } : null,
+      warnings,
+      comps: compRows.map((listing) => ({
+        id: listing.id,
+        year: listing.year ?? null,
+        title: listing.title,
+        price: listing.price ?? null,
+        mileage: listing.mileage ?? null,
+        url: listing.url ?? null,
+        source: listing.source,
+        sellerName: listing.sellerName ?? null
+      })).sort((a, b) => (a.price ?? 0) - (b.price ?? 0)),
       vsMarketPct,
       demandSignal: market?.demandSignal ?? null,
       verdict
@@ -49415,11 +49423,19 @@ async function dealerDesk() {
   const priced = activeCars.filter((car) => car.price);
   const makeCounts = /* @__PURE__ */ new Map();
   for (const car of activeCars) makeCounts.set(car.make, (makeCounts.get(car.make) ?? 0) + 1);
+  const trackedMarketListings = activeRows.filter(
+    (listing) => listing.source !== "oneexotics" && !listing.sellerName?.toLowerCase().includes("one exotics")
+  ).length;
   return {
     computedAt: new Date(now).toISOString(),
     dealer: "One Exotics Luxury Vehicles LLC \xB7 Tampa, FL",
     feedSource,
     feedError,
+    market: {
+      trackedListings: trackedMarketListings,
+      storeMode: store.mode,
+      asOf: new Date(now).toISOString()
+    },
     summary: {
       activeUnits: activeCars.length,
       pendingSales: activeCars.filter((car) => car.pendingSale).length,

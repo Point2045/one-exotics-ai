@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { Link } from 'react-router'
-import { ArrowLeft, ArrowUpDown, Building2, CheckCircle2, Gauge, History, Radar as RadarIcon, TrendingDown, TrendingUp } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowUpDown, Building2, CheckCircle2, ChevronDown, Gauge, History, Radar as RadarIcon, TrendingDown, TrendingUp } from 'lucide-react'
 import { trpc } from '@/providers/trpc'
 import '../App.css'
 
@@ -42,10 +42,132 @@ function DemandChip({ signal }: { signal: 'fast' | 'balanced' | 'slow' | null })
   return <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${tone}`}><Gauge className="h-3 w-3" />{signal}</span>
 }
 
+type DeskUnit = NonNullable<ReturnType<typeof trpc.highline.desk.useQuery>['data']>['units'][number]
+
+const BASIS_LABEL: Record<string, string> = {
+  'year cohort': '±1 model-year cohort',
+  variant: 'variant-wide set',
+  family: 'sibling-variant family set',
+}
+
+/**
+ * Drill-down proof for a unit's benchmark: the exact comp listings behind
+ * the median, distribution stats, the ladder step used, and the verdict
+ * math — so anyone can audit the number instead of trusting it.
+ */
+function UnitEvidence({ unit }: { unit: DeskUnit }) {
+  if (unit.verdict === 'untracked' || unit.marketMedian == null) {
+    return (
+      <div className="px-5 py-5 text-sm text-slate-400">
+        {unit.matchedVariant ? (
+          <>
+            Matched to tracked variant <span className="font-semibold text-white">{unit.matchedVariant}</span>, but no market
+            comps for it exist in the current snapshot. This resolves as market coverage accrues on the next refreshes.
+          </>
+        ) : (
+          <>
+            This variant is not in the tracked set yet, so there is nothing to benchmark against. Ask the desk to add the
+            variant and comps will start accumulating from the next refresh.
+          </>
+        )}
+      </div>
+    )
+  }
+
+  const medianComp = unit.comps.reduce<(typeof unit.comps)[number] | null>(
+    (best, comp) => (comp.price != null && Math.abs(comp.price - unit.marketMedian!) < Math.abs((best?.price ?? Infinity) - unit.marketMedian!) ? comp : best),
+    null,
+  )
+  const basisLabel = BASIS_LABEL[unit.marketBasis ?? ''] ?? unit.marketBasis
+  const band = unit.verdict === 'rich' ? '≥ +5% → priced rich' : unit.verdict === 'opportunity' ? '≤ −5% → priced to move' : 'within ±5% → at market'
+
+  return (
+    <div className="grid gap-6 px-5 py-5 lg:grid-cols-[340px_1fr]">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">How this number is built</p>
+        <ol className="mt-3 space-y-2.5 text-sm leading-6 text-slate-300">
+          <li>
+            <span className="text-slate-500">1 · Comp set:</span> {unit.marketSample} active market listing{unit.marketSample === 1 ? '' : 's'} for{' '}
+            <span className="text-white">{unit.matchedVariant}</span> — {basisLabel} — excluding this dealer&apos;s own units.
+          </li>
+          <li>
+            <span className="text-slate-500">2 · Median:</span> middle price of the sorted comp set (average of the two
+            middle prices when n is even) = <span className="font-semibold text-white">{money(unit.marketMedian)}</span>.
+          </li>
+          <li>
+            <span className="text-slate-500">3 · Compare:</span> ask {money(unit.price)} vs {money(unit.marketMedian)} →{' '}
+            <span className={unit.vsMarketPct! >= 0 ? 'text-rose-300' : 'text-emerald-300'}>
+              {unit.vsMarketPct! >= 0 ? '+' : ''}{unit.vsMarketPct!.toFixed(1)}%
+            </span>
+            {' '}→ {band}.
+          </li>
+        </ol>
+        {unit.marketStats && (
+          <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-slate-400">
+            <span className="rounded bg-white/[0.05] px-2 py-1">min {money(unit.marketStats.min)}</span>
+            <span className="rounded bg-white/[0.05] px-2 py-1">p25 {money(unit.marketStats.p25)}</span>
+            <span className="rounded bg-[#a63ec2]/15 px-2 py-1 text-[#d9a8f2]">median {money(unit.marketMedian)}</span>
+            <span className="rounded bg-white/[0.05] px-2 py-1">p75 {money(unit.marketStats.p75)}</span>
+            <span className="rounded bg-white/[0.05] px-2 py-1">max {money(unit.marketStats.max)}</span>
+          </div>
+        )}
+        {unit.warnings.length > 0 && (
+          <div className="mt-3 space-y-1.5">
+            {unit.warnings.map((warning) => (
+              <p key={warning} className="flex items-start gap-1.5 text-xs leading-5 text-amber-300/90">
+                <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                {warning}
+              </p>
+            ))}
+          </div>
+        )}
+        <p className="mt-3 text-[11px] leading-4 text-slate-600">
+          Comps are raw asking prices — not adjusted for mileage, spec, or condition. Verify any unit against the live
+          listings on the right before acting.
+        </p>
+      </div>
+      <div className="max-h-[340px] overflow-y-auto rounded-xl border border-white/[0.06]">
+        <table className="w-full text-left text-xs">
+          <thead className="sticky top-0 bg-[#1e1f27]">
+            <tr className="border-b border-white/[0.06] uppercase tracking-[0.14em] text-slate-500">
+              <th className="px-3 py-2 font-medium">Comp</th>
+              <th className="px-3 py-2 font-medium">Price</th>
+              <th className="px-3 py-2 font-medium">Miles</th>
+              <th className="px-3 py-2 font-medium">Source</th>
+              <th className="px-3 py-2 font-medium">Seller</th>
+            </tr>
+          </thead>
+          <tbody>
+            {unit.comps.map((comp) => (
+              <tr key={comp.id} className={`border-b border-white/[0.04] ${comp.id === medianComp?.id ? 'bg-[#a63ec2]/10' : ''}`}>
+                <td className="max-w-[320px] truncate px-3 py-2 text-slate-300">
+                  {comp.url ? (
+                    <a href={comp.url} target="_blank" rel="noreferrer" className="hover:text-white hover:underline">
+                      {comp.title}
+                    </a>
+                  ) : (
+                    comp.title
+                  )}
+                  {comp.id === medianComp?.id && <span className="ml-1.5 rounded bg-[#a63ec2]/20 px-1 py-0.5 text-[10px] text-[#d9a8f2]">median</span>}
+                </td>
+                <td className="px-3 py-2 font-semibold text-white">{money(comp.price)}</td>
+                <td className="px-3 py-2 text-slate-400">{miles(comp.mileage)}</td>
+                <td className="px-3 py-2 text-slate-500">{comp.source}</td>
+                <td className="max-w-[180px] truncate px-3 py-2 text-slate-500">{comp.sellerName ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 function DeskBody() {
   const desk = trpc.highline.desk.useQuery(undefined, { staleTime: 600_000 })
   const [sortKey, setSortKey] = useState<SortKey>('price')
   const [sortAsc, setSortAsc] = useState(false)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const data = desk.data
 
   const units = useMemo(() => {
@@ -118,6 +240,15 @@ function DeskBody() {
         </div>
       )}
 
+      {data && (
+        <p className="mt-4 text-xs leading-5 text-slate-500">
+          Benchmarked against <span className="font-semibold text-slate-300">{data.market.trackedListings.toLocaleString()} tracked market listings</span>
+          {' '}· snapshot {new Date(data.market.asOf).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+          {' '}· {data.market.storeMode === 'memory' ? 'live in-memory snapshot (resets between deploys)' : 'persistent store'}
+          {' '}· click any row to audit the exact comps behind its median and verdict.
+        </p>
+      )}
+
       <div className="mt-8 overflow-x-auto rounded-[2rem] border border-white/[0.08] bg-white/[0.025]">
         <table className="w-full min-w-[1220px] text-left text-sm">
           <thead>
@@ -144,44 +275,64 @@ function DeskBody() {
           </thead>
           <tbody>
             {units.map((unit) => (
-              <tr key={unit.id} className="border-b border-white/[0.04] transition hover:bg-white/[0.03]">
-                <td className="px-5 py-3.5">
-                  <div className="flex items-center gap-3">
-                    {unit.imageUrl && <img src={unit.imageUrl} alt="" className="h-11 w-16 rounded-lg object-cover" loading="lazy" />}
-                    <div>
-                      <a href={unit.url ?? '#'} target="_blank" rel="noreferrer" className="font-semibold text-white hover:underline">
-                        {unit.year} {unit.make} {unit.model}
-                      </a>
-                      <p className="mt-0.5 max-w-[420px] truncate text-xs text-slate-500">
-                        {unit.trim}
-                        {unit.stockno ? ` · #${unit.stockno}` : ''}
-                        {unit.pendingSale ? ' · pending sale' : ''}
-                      </p>
+              <Fragment key={unit.id}>
+                <tr
+                  className="cursor-pointer border-b border-white/[0.04] transition hover:bg-white/[0.03]"
+                  onClick={() => setExpandedId((current) => (current === unit.id ? null : unit.id))}
+                >
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center gap-3">
+                      <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${expandedId === unit.id ? 'rotate-180 text-[#d9a8f2]' : ''}`} />
+                      {unit.imageUrl && <img src={unit.imageUrl} alt="" className="h-11 w-16 rounded-lg object-cover" loading="lazy" />}
+                      <div>
+                        <a
+                          href={unit.url ?? '#'}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(event) => event.stopPropagation()}
+                          className="font-semibold text-white hover:underline"
+                        >
+                          {unit.year} {unit.make} {unit.model}
+                        </a>
+                        <p className="mt-0.5 max-w-[420px] truncate text-xs text-slate-500">
+                          {unit.trim}
+                          {unit.stockno ? ` · #${unit.stockno}` : ''}
+                          {unit.pendingSale ? ' · pending sale' : ''}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                </td>
-                <td className="px-4 py-3.5 font-semibold text-white">{money(unit.price)}</td>
-                <td className="px-4 py-3.5 text-slate-300">{miles(unit.mileage)}</td>
-                <td className="px-4 py-3.5">
-                  {unit.vsMarketPct != null ? (
-                    <span className={unit.vsMarketPct >= 0 ? 'text-rose-300' : 'text-emerald-300'}>
-                      {unit.vsMarketPct >= 0 ? '+' : ''}{unit.vsMarketPct.toFixed(1)}%
-                    </span>
-                  ) : (
-                    <span className="text-slate-600">—</span>
-                  )}
-                  {unit.marketSample != null && <span className="ml-1.5 text-xs text-slate-600">n={unit.marketSample}</span>}
-                </td>
-                <td className="px-4 py-3.5 text-slate-300">
-                  {money(unit.marketMedian)}
-                  {unit.marketBasis === 'year cohort' && <span className="ml-1.5 rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-slate-500">±1yr</span>}
-                  {unit.marketBasis === 'family' && (
-                    <span className="ml-1.5 rounded bg-amber-400/10 px-1.5 py-0.5 text-[10px] text-amber-300/80" title="Benchmarked against sibling variants (e.g. 488 GTB comps for a 488 Spider) — thinner tape">family</span>
-                  )}
-                </td>
-                <td className="px-4 py-3.5"><DemandChip signal={unit.demandSignal} /></td>
-                <td className="px-5 py-3.5"><VerdictChip verdict={unit.verdict} pct={unit.vsMarketPct} matched={Boolean(unit.matchedVariant)} /></td>
-              </tr>
+                  </td>
+                  <td className="px-4 py-3.5 font-semibold text-white">{money(unit.price)}</td>
+                  <td className="px-4 py-3.5 text-slate-300">{miles(unit.mileage)}</td>
+                  <td className="px-4 py-3.5">
+                    {unit.vsMarketPct != null ? (
+                      <span className={unit.vsMarketPct >= 0 ? 'text-rose-300' : 'text-emerald-300'}>
+                        {unit.vsMarketPct >= 0 ? '+' : ''}{unit.vsMarketPct.toFixed(1)}%
+                      </span>
+                    ) : (
+                      <span className="text-slate-600">—</span>
+                    )}
+                    {unit.marketSample != null && <span className="ml-1.5 text-xs text-slate-600">n={unit.marketSample}</span>}
+                    {unit.warnings.length > 0 && <AlertTriangle className="ml-1.5 inline h-3.5 w-3.5 text-amber-300/80" />}
+                  </td>
+                  <td className="px-4 py-3.5 text-slate-300">
+                    {money(unit.marketMedian)}
+                    {unit.marketBasis === 'year cohort' && <span className="ml-1.5 rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-slate-500">±1yr</span>}
+                    {unit.marketBasis === 'family' && (
+                      <span className="ml-1.5 rounded bg-amber-400/10 px-1.5 py-0.5 text-[10px] text-amber-300/80" title="Benchmarked against sibling variants (e.g. 488 GTB comps for a 488 Spider) — thinner tape">family</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3.5"><DemandChip signal={unit.demandSignal} /></td>
+                  <td className="px-5 py-3.5"><VerdictChip verdict={unit.verdict} pct={unit.vsMarketPct} matched={Boolean(unit.matchedVariant)} /></td>
+                </tr>
+                {expandedId === unit.id && (
+                  <tr className="border-b border-white/[0.06] bg-white/[0.015]">
+                    <td colSpan={7}>
+                      <UnitEvidence unit={unit} />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
           </tbody>
         </table>

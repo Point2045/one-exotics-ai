@@ -49224,11 +49224,22 @@ async function listingDetail(id) {
   ]);
   return { ...listing, supportedModel: supportedModel ?? null, priceHistory: history, valuations };
 }
+var deskMarketDataInflight = null;
+function ensureDeskMarketData() {
+  deskMarketDataInflight ??= refreshListingsFromAutoDev().catch(() => null).finally(() => {
+    deskMarketDataInflight = null;
+  });
+  return deskMarketDataInflight;
+}
 async function dealerDesk() {
   const store = await getStore();
-  const [modelRows, activeRows, delistedRows] = await Promise.all([
+  let activeRows = await store.activeListings(5e3);
+  if (activeRows.length < 200) {
+    await ensureDeskMarketData();
+    activeRows = await store.activeListings(5e3);
+  }
+  const [modelRows, delistedRows] = await Promise.all([
     store.allSupportedModels(),
-    store.activeListings(5e3),
     store.recentlyDelisted(180, 5e3)
   ]);
   let cars;

@@ -2,7 +2,7 @@ import { autoDevConfigured } from "../providers/autoDev";
 import { parseBotConfigured } from "../providers/batComps";
 import { marketCheckConfigured } from "../providers/marketcheck";
 import { fetchDealerInventory } from "../providers/oneExotics";
-import { latestIngestionRun } from "../services/ingestion";
+import { latestIngestionRun, refreshListingsFromAutoDev } from "../services/ingestion";
 import { matchSupportedModel } from "../services/matching";
 import { getStore } from "../services/store";
 
@@ -385,11 +385,35 @@ export async function listingDetail(id: number) {
  * sold side is analyzed as mix/volume; dated dealer velocity accrues from our
  * own snapshots once persistence is live.
  */
+// Coalesced self-heal: concurrent desk hits share one refresh promise.
+let deskMarketDataInflight: Promise<unknown> | null = null;
+function ensureDeskMarketData() {
+  deskMarketDataInflight ??= refreshListingsFromAutoDev()
+    .catch(() => null) // best effort — desk renders with whatever the store holds
+    .finally(() => {
+      deskMarketDataInflight = null;
+    });
+  return deskMarketDataInflight;
+}
+
 export async function dealerDesk() {
   const store = await getStore();
-  const [modelRows, activeRows, delistedRows] = await Promise.all([
+
+  // Self-healing (interim until the persistent DB is live): production runs
+  // on the in-memory store seeded with only the ~36-row demo set, which has
+  // no comps for the dealer's variants — every unit rendered "No market data
+  // yet". When the store looks that thin, run a real refresh first so
+  // benchmarks, demand and verdicts populate even in memory mode. Once the
+  // DB-backed store is warm (or the nightly cron has accumulated), the
+  // threshold is exceeded and this is a no-op.
+  let activeRows = await store.activeListings(5000);
+  if (activeRows.length < 200) {
+    await ensureDeskMarketData();
+    activeRows = await store.activeListings(5000);
+  }
+
+  const [modelRows, delistedRows] = await Promise.all([
     store.allSupportedModels(),
-    store.activeListings(5000),
     store.recentlyDelisted(180, 5000),
   ]);
 

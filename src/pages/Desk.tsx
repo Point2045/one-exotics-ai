@@ -175,6 +175,9 @@ function DeskBody() {
                 <td className="px-4 py-3.5 text-slate-300">
                   {money(unit.marketMedian)}
                   {unit.marketBasis === 'year cohort' && <span className="ml-1.5 rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-slate-500">±1yr</span>}
+                  {unit.marketBasis === 'family' && (
+                    <span className="ml-1.5 rounded bg-amber-400/10 px-1.5 py-0.5 text-[10px] text-amber-300/80" title="Benchmarked against sibling variants (e.g. 488 GTB comps for a 488 Spider) — thinner tape">family</span>
+                  )}
                 </td>
                 <td className="px-4 py-3.5"><DemandChip signal={unit.demandSignal} /></td>
                 <td className="px-5 py-3.5"><VerdictChip verdict={unit.verdict} pct={unit.vsMarketPct} matched={Boolean(unit.matchedVariant)} /></td>
@@ -228,7 +231,8 @@ function DeskBody() {
 
       <p className="mt-8 text-xs leading-5 text-slate-600">
         Source: oneexoticstampa.com live feed · Market medians and demand signals from tracked-market listings and observed
-        sell-through (excludes the dealer&apos;s own units). Verdict bands: rich ≥ +5% over median, under market ≤ −5%.
+        sell-through (excludes the dealer&apos;s own units). Benchmarks prefer a ±1 model-year cohort, then the variant-wide
+        median, then sibling variants (tagged family). Verdict bands: rich ≥ +5% over median, under market ≤ −5%.
       </p>
     </main>
   )

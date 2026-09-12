@@ -49272,12 +49272,22 @@ async function dealerDesk() {
     }));
   }
   const marketByModel = /* @__PURE__ */ new Map();
+  const marketByFamily = /* @__PURE__ */ new Map();
   const now = Date.now();
   for (const model of modelRows) {
     const rows = activeRows.filter(
       (listing) => listing.modelId === model.id && listing.price && listing.source !== "oneexotics" && !listing.sellerName?.toLowerCase().includes("one exotics")
     );
     if (!rows.length) continue;
+    const family = marketByFamily.get(`${model.make}|${model.modelFamily}`) ?? { prices: [], byYear: /* @__PURE__ */ new Map() };
+    marketByFamily.set(`${model.make}|${model.modelFamily}`, family);
+    for (const listing of rows) {
+      family.prices.push(listing.price);
+      if (!listing.year) continue;
+      const bucket = family.byYear.get(listing.year) ?? [];
+      bucket.push(listing.price);
+      family.byYear.set(listing.year, bucket);
+    }
     const prices = rows.map((listing) => listing.price).sort((a, b) => a - b);
     const byYear = /* @__PURE__ */ new Map();
     for (const listing of rows) {
@@ -49303,6 +49313,7 @@ async function dealerDesk() {
       demandSignal: medianDays == null ? null : medianDays <= 35 ? "fast" : medianDays <= 75 ? "balanced" : "slow"
     });
   }
+  for (const family of marketByFamily.values()) family.prices.sort((a, b) => a - b);
   const activeCars = cars.filter((car) => !car.sold);
   const soldCars = cars.filter((car) => car.sold);
   const units = activeCars.map((car) => {
@@ -49338,6 +49349,25 @@ async function dealerDesk() {
         benchmarkMedian = market.median;
         benchmarkSample = market.sample;
         benchmarkBasis = "variant";
+      }
+    }
+    if (benchmarkMedian == null && model) {
+      const family = marketByFamily.get(`${model.make}|${model.modelFamily}`);
+      if (family && family.prices.length) {
+        if (car.year) {
+          const cohort = [];
+          for (const year2 of [car.year - 1, car.year, car.year + 1]) cohort.push(...family.byYear.get(year2) ?? []);
+          if (cohort.length >= 3) {
+            benchmarkMedian = percentileOf(cohort.sort((a, b) => a - b), 0.5);
+            benchmarkSample = cohort.length;
+            benchmarkBasis = "family";
+          }
+        }
+        if (benchmarkMedian == null) {
+          benchmarkMedian = percentileOf(family.prices, 0.5);
+          benchmarkSample = family.prices.length;
+          benchmarkBasis = "family";
+        }
       }
     }
     const vsMarketPct = (

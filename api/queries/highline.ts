@@ -463,6 +463,12 @@ export async function dealerDesk() {
     number,
     { median: number; sample: number; byYear: Map<number, number[]>; demandSignal: "fast" | "balanced" | "slow" | null }
   >();
+  // Family-level fallback (e.g. all 488s, all Huracáns): in memory-mode the
+  // store is a single refresh snapshot, so thinner variants (488 Spider,
+  // 720S Spider, Ghost…) can have zero comps. Benchmarking against sibling
+  // variants is directionally useful and beats "No market data yet"; the
+  // "family" basis label keeps the weaker benchmark visible in the UI.
+  const marketByFamily = new Map<string, { prices: number[]; byYear: Map<number, number[]> }>();
   const now = Date.now();
   for (const model of modelRows) {
     const rows = activeRows.filter(
@@ -473,6 +479,15 @@ export async function dealerDesk() {
         !listing.sellerName?.toLowerCase().includes("one exotics"),
     );
     if (!rows.length) continue;
+    const family = marketByFamily.get(`${model.make}|${model.modelFamily}`) ?? { prices: [], byYear: new Map<number, number[]>() };
+    marketByFamily.set(`${model.make}|${model.modelFamily}`, family);
+    for (const listing of rows) {
+      family.prices.push(listing.price!);
+      if (!listing.year) continue;
+      const bucket = family.byYear.get(listing.year) ?? [];
+      bucket.push(listing.price!);
+      family.byYear.set(listing.year, bucket);
+    }
     const prices = rows.map((listing) => listing.price!).sort((a, b) => a - b);
     const byYear = new Map<number, number[]>();
     for (const listing of rows) {
@@ -500,6 +515,8 @@ export async function dealerDesk() {
       demandSignal: medianDays == null ? null : medianDays <= 35 ? "fast" : medianDays <= 75 ? "balanced" : "slow",
     });
   }
+  for (const family of marketByFamily.values()) family.prices.sort((a, b) => a - b);
+
 
   const activeCars = cars.filter((car) => !car.sold);
   const soldCars = cars.filter((car) => car.sold);
@@ -521,10 +538,12 @@ export async function dealerDesk() {
       };
       const model = matchSupportedModel(asListing, modelRows);
       const market = model ? marketByModel.get(model.id) : undefined;
-      // Prefer a ±1 model-year comp cohort (min 3 samples) over the variant-wide median.
+      // Benchmark ladder: ±1 model-year cohort within the variant (min 3) →
+      // variant-wide median → same ladder one level up within the model
+      // family (sibling variants, e.g. 488 GTB comps for a 488 Spider).
       let benchmarkMedian: number | null = null;
       let benchmarkSample = 0;
-      let benchmarkBasis: "year cohort" | "variant" | null = null;
+      let benchmarkBasis: "year cohort" | "variant" | "family" | null = null;
       if (market) {
         if (car.year) {
           const cohort: number[] = [];
@@ -539,6 +558,25 @@ export async function dealerDesk() {
           benchmarkMedian = market.median;
           benchmarkSample = market.sample;
           benchmarkBasis = "variant";
+        }
+      }
+      if (benchmarkMedian == null && model) {
+        const family = marketByFamily.get(`${model.make}|${model.modelFamily}`);
+        if (family && family.prices.length) {
+          if (car.year) {
+            const cohort: number[] = [];
+            for (const year of [car.year - 1, car.year, car.year + 1]) cohort.push(...(family.byYear.get(year) ?? []));
+            if (cohort.length >= 3) {
+              benchmarkMedian = percentileOf(cohort.sort((a, b) => a - b), 0.5);
+              benchmarkSample = cohort.length;
+              benchmarkBasis = "family";
+            }
+          }
+          if (benchmarkMedian == null) {
+            benchmarkMedian = percentileOf(family.prices, 0.5);
+            benchmarkSample = family.prices.length;
+            benchmarkBasis = "family";
+          }
         }
       }
       const vsMarketPct =

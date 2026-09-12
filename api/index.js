@@ -40941,7 +40941,15 @@ var HIGHLINE_SEARCHES = [
   { key: "porsche-911", label: "Porsche 911", make: "Porsche", model: "911", family: "911" },
   { key: "mercedes-g-class", label: "Mercedes G-Class", make: "Mercedes-Benz", model: "G-Class", family: "G-Class" },
   { key: "mercedes-g550", label: "Mercedes G 550", make: "Mercedes-Benz", model: "G 550", family: "G-Class" },
-  { key: "mercedes-amg-g63", label: "Mercedes-AMG G 63", make: "Mercedes-Benz", model: "AMG G 63", family: "G-Class" }
+  { key: "mercedes-amg-g63", label: "Mercedes-AMG G 63", make: "Mercedes-Benz", model: "AMG G 63", family: "G-Class" },
+  { key: "mclaren-all", label: "All McLaren", make: "McLaren", family: "McLaren" },
+  { key: "nissan-gt-r", label: "Nissan GT-R", make: "Nissan", model: "GT-R", family: "GT-R" },
+  { key: "mercedes-amg-gt", label: "Mercedes-AMG GT", make: "Mercedes-Benz", model: "AMG GT", family: "AMG GT" },
+  { key: "rolls-royce-all", label: "All Rolls-Royce", make: "Rolls-Royce", family: "Rolls-Royce" },
+  { key: "bentley-all", label: "All Bentley", make: "Bentley", family: "Bentley" },
+  { key: "audi-r8", label: "Audi R8", make: "Audi", model: "R8", family: "R8" },
+  { key: "acura-nsx", label: "Acura NSX", make: "Acura", model: "NSX", family: "NSX" },
+  { key: "chevrolet-corvette", label: "Chevrolet Corvette", make: "Chevrolet", model: "Corvette", family: "Corvette" }
 ];
 var ferrari = (variant, yearStart, yearEnd, sortOrder, generation) => ({
   make: "Ferrari",
@@ -41006,6 +41014,20 @@ var gWagon = (variant, yearStart, yearEnd, sortOrder, generation) => ({
   matchTerms: [variant, "G-Class", "G Wagon", ...variant.split(/\s+/)],
   sortOrder
 });
+var singleMake = (make, modelFamily, variant, yearStart, yearEnd, sortOrder, generation, extraTerms = []) => ({
+  make,
+  modelFamily,
+  variant,
+  generation,
+  yearStart,
+  yearEnd,
+  bodyStyle: variant.includes("Spider") || variant.includes("Convertible") || variant.includes("Roadster") ? "Convertible" : variant.includes("Cullinan") || variant.includes("Bentayga") ? "SUV" : variant.includes("Ghost") || variant.includes("Phantom") || variant.includes("Flying Spur") ? "Sedan" : "Coupe",
+  searchMake: make,
+  searchModel: modelFamily !== make ? modelFamily : void 0,
+  matchTerms: [variant, ...extraTerms, ...variant.split(/\s+/)],
+  sortOrder
+});
+var mclaren = (variant, yearStart, yearEnd, sortOrder, generation) => singleMake("McLaren", "McLaren", variant, yearStart, yearEnd, sortOrder, generation);
 var HIGHLINE_MODEL_DEFINITIONS = [
   ferrari("296 GTB", 2022, void 0, 10, "Tipo F171"),
   ferrari("296 GTS", 2022, void 0, 11, "Tipo F171"),
@@ -41089,7 +41111,29 @@ var HIGHLINE_MODEL_DEFINITIONS = [
   gWagon("AMG G 63", 2013, void 0, 510, "W463/W465"),
   gWagon("AMG G 65", 2016, 2018, 520, "W463"),
   gWagon("G 550 4x4\xB2", 2017, 2018, 530, "W463"),
-  gWagon("AMG G 63 4x4\xB2", 2023, void 0, 531, "W463")
+  gWagon("AMG G 63 4x4\xB2", 2023, void 0, 531, "W463"),
+  // Dealer-floor coverage: makes One Exotics actually stocks (plus adjacent halo variants).
+  ferrari("F355", 1995, 1999, 140, "F129"),
+  mclaren("720S", 2018, 2023, 600, "P14"),
+  mclaren("720S Spider", 2019, 2023, 601, "P14"),
+  mclaren("765LT", 2021, 2023, 602, "P14"),
+  mclaren("750S", 2024, void 0, 603, "P14"),
+  mclaren("600LT", 2019, 2021, 610, "P13"),
+  mclaren("570S", 2016, 2021, 611, "P13"),
+  mclaren("Artura", 2023, void 0, 620, "M630"),
+  mclaren("GT", 2020, 2023, 630, "P13"),
+  singleMake("Nissan", "GT-R", "GT-R", 2009, 2024, 650, "R35", ["GTR", "GT-R Premium", "GT-R Track Edition"]),
+  singleMake("Nissan", "GT-R", "GT-R Nismo", 2015, 2024, 651, "R35", ["Nismo"]),
+  singleMake("Mercedes-Benz", "AMG GT", "AMG GT", 2016, 2021, 660, "C190"),
+  singleMake("Mercedes-Benz", "AMG GT", "AMG GT S", 2016, 2021, 661, "C190"),
+  singleMake("Mercedes-Benz", "AMG GT", "AMG GT R", 2017, 2021, 662, "C190"),
+  singleMake("Mercedes-Benz", "AMG GT", "AMG GT Black Series", 2021, 2021, 663, "C190"),
+  singleMake("Rolls-Royce", "Rolls-Royce", "Cullinan", 2019, void 0, 670, "RR31", ["Black Badge Cullinan", "Cullinan Black Badge"]),
+  singleMake("Rolls-Royce", "Rolls-Royce", "Ghost", 2010, void 0, 671, "RR4/RR5"),
+  singleMake("Bentley", "Continental GT", "Continental GT", 2018, void 0, 680, "3rd gen", ["Continental GT W12", "Continental GT Speed", "Continental GT V8"]),
+  singleMake("Audi", "R8", "R8", 2008, 2024, 690, "Type 42/4S", ["R8 V10", "R8 V10 Plus", "R8 V10 Performance"]),
+  singleMake("Acura", "NSX", "NSX", 2017, 2022, 700, "2nd gen", ["NSX SH-AWD", "NSX Type S"]),
+  singleMake("Chevrolet", "Corvette", "Corvette Z06", 2023, void 0, 710, "C8", ["Z06", "Z06 Convertible", "Z06 Coupe"])
 ];
 
 // api/providers/autoDev.ts
@@ -48627,9 +48671,11 @@ function truncate(value, length) {
 async function ensureSupportedModelsSeeded() {
   const store = await getStore();
   const existing = await store.allSupportedModels();
-  if (existing.length) return;
+  const have = new Set(existing.map((model) => `${model.make}|${model.modelFamily}|${model.variant}`));
+  const missing = HIGHLINE_MODEL_DEFINITIONS.filter((model) => !have.has(`${model.make}|${model.modelFamily}|${model.variant}`));
+  if (!missing.length) return;
   await store.insertSupportedModels(
-    HIGHLINE_MODEL_DEFINITIONS.map((model) => ({
+    missing.map((model) => ({
       make: model.make,
       modelFamily: model.modelFamily,
       variant: model.variant,
@@ -49179,6 +49225,13 @@ async function dealerDesk() {
     const rows = activeRows.filter((listing) => listing.modelId === model.id && listing.price && listing.source !== "oneexotics");
     if (!rows.length) continue;
     const prices = rows.map((listing) => listing.price).sort((a, b) => a - b);
+    const byYear = /* @__PURE__ */ new Map();
+    for (const listing of rows) {
+      if (!listing.year) continue;
+      const bucket = byYear.get(listing.year) ?? [];
+      bucket.push(listing.price);
+      byYear.set(listing.year, bucket);
+    }
     const gone = delistedRows.filter((listing) => listing.modelId === model.id);
     const durations = gone.map((listing) => {
       const start = (listing.listedAt ?? listing.firstSeenAt)?.getTime();
@@ -49192,6 +49245,7 @@ async function dealerDesk() {
       median: percentileOf(prices, 0.5),
       // prices is non-empty here (rows.length guard above)
       sample: rows.length,
+      byYear,
       demandSignal: medianDays == null ? null : medianDays <= 35 ? "fast" : medianDays <= 75 ? "balanced" : "slow"
     });
   }
@@ -49213,7 +49267,29 @@ async function dealerDesk() {
     };
     const model = matchSupportedModel(asListing, modelRows);
     const market = model ? marketByModel.get(model.id) : void 0;
-    const vsMarketPct = market && car.price ? Math.round((car.price - market.median) / market.median * 1e3) / 10 : null;
+    let benchmarkMedian = null;
+    let benchmarkSample = 0;
+    let benchmarkBasis = null;
+    if (market) {
+      if (car.year) {
+        const cohort = [];
+        for (const year2 of [car.year - 1, car.year, car.year + 1]) cohort.push(...market.byYear.get(year2) ?? []);
+        if (cohort.length >= 3) {
+          benchmarkMedian = percentileOf(cohort.sort((a, b) => a - b), 0.5);
+          benchmarkSample = cohort.length;
+          benchmarkBasis = "year cohort";
+        }
+      }
+      if (benchmarkMedian == null) {
+        benchmarkMedian = market.median;
+        benchmarkSample = market.sample;
+        benchmarkBasis = "variant";
+      }
+    }
+    const vsMarketPct = (
+      // `|| 0` normalizes -0, which superjson would otherwise serialize as the string "-0".
+      benchmarkMedian && car.price ? Math.round((car.price - benchmarkMedian) / benchmarkMedian * 1e3) / 10 || 0 : null
+    );
     const verdict = vsMarketPct == null ? "untracked" : vsMarketPct >= 5 ? "rich" : vsMarketPct <= -5 ? "opportunity" : "market";
     return {
       id: car.id,
@@ -49230,8 +49306,9 @@ async function dealerDesk() {
       pendingSale: car.pendingSale,
       matchedVariant: model ? model.variant : null,
       modelId: model ? model.id : null,
-      marketMedian: market?.median ?? null,
-      marketSample: market?.sample ?? null,
+      marketMedian: benchmarkMedian,
+      marketSample: benchmarkMedian != null ? benchmarkSample : null,
+      marketBasis: benchmarkBasis,
       vsMarketPct,
       demandSignal: market?.demandSignal ?? null,
       verdict

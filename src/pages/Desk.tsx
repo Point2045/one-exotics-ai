@@ -172,7 +172,10 @@ function DeskBody() {
                   )}
                   {unit.marketSample != null && <span className="ml-1.5 text-xs text-slate-600">n={unit.marketSample}</span>}
                 </td>
-                <td className="px-4 py-3.5 text-slate-300">{money(unit.marketMedian)}</td>
+                <td className="px-4 py-3.5 text-slate-300">
+                  {money(unit.marketMedian)}
+                  {unit.marketBasis === 'year cohort' && <span className="ml-1.5 rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-slate-500">±1yr</span>}
+                </td>
                 <td className="px-4 py-3.5"><DemandChip signal={unit.demandSignal} /></td>
                 <td className="px-5 py-3.5"><VerdictChip verdict={unit.verdict} pct={unit.vsMarketPct} /></td>
               </tr>

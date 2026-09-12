@@ -22,10 +22,14 @@ function truncate(value: string | undefined, length: number) {
 export async function ensureSupportedModelsSeeded() {
   const store = await getStore();
   const existing = await store.allSupportedModels();
-  if (existing.length) return;
+  // Reconcile, not just seed-if-empty: variants added to the definitions later
+  // (e.g. makes matching the dealer's floor) must appear in existing databases too.
+  const have = new Set(existing.map((model) => `${model.make}|${model.modelFamily}|${model.variant}`));
+  const missing = HIGHLINE_MODEL_DEFINITIONS.filter((model) => !have.has(`${model.make}|${model.modelFamily}|${model.variant}`));
+  if (!missing.length) return;
 
   await store.insertSupportedModels(
-    HIGHLINE_MODEL_DEFINITIONS.map((model) => ({
+    missing.map((model) => ({
       make: model.make,
       modelFamily: model.modelFamily,
       variant: model.variant,

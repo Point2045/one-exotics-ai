@@ -29,6 +29,14 @@ export const HIGHLINE_SEARCHES: HighlineSearchDefinition[] = [
   { key: "mercedes-g-class", label: "Mercedes G-Class", make: "Mercedes-Benz", model: "G-Class", family: "G-Class" },
   { key: "mercedes-g550", label: "Mercedes G 550", make: "Mercedes-Benz", model: "G 550", family: "G-Class" },
   { key: "mercedes-amg-g63", label: "Mercedes-AMG G 63", make: "Mercedes-Benz", model: "AMG G 63", family: "G-Class" },
+  { key: "mclaren-all", label: "All McLaren", make: "McLaren", family: "McLaren" },
+  { key: "nissan-gt-r", label: "Nissan GT-R", make: "Nissan", model: "GT-R", family: "GT-R" },
+  { key: "mercedes-amg-gt", label: "Mercedes-AMG GT", make: "Mercedes-Benz", model: "AMG GT", family: "AMG GT" },
+  { key: "rolls-royce-all", label: "All Rolls-Royce", make: "Rolls-Royce", family: "Rolls-Royce" },
+  { key: "bentley-all", label: "All Bentley", make: "Bentley", family: "Bentley" },
+  { key: "audi-r8", label: "Audi R8", make: "Audi", model: "R8", family: "R8" },
+  { key: "acura-nsx", label: "Acura NSX", make: "Acura", model: "NSX", family: "NSX" },
+  { key: "chevrolet-corvette", label: "Chevrolet Corvette", make: "Chevrolet", model: "Corvette", family: "Corvette" },
 ];
 
 const ferrari = (
@@ -129,6 +137,40 @@ const gWagon = (
   sortOrder,
 });
 
+/** Generic factory for single-line exotic makes (McLaren, Rolls-Royce, etc.). */
+const singleMake = (
+  make: string,
+  modelFamily: string,
+  variant: string,
+  yearStart: number,
+  yearEnd: number | undefined,
+  sortOrder: number,
+  generation?: string,
+  extraTerms: string[] = [],
+): HighlineModelDefinition => ({
+  make,
+  modelFamily,
+  variant,
+  generation,
+  yearStart,
+  yearEnd,
+  bodyStyle:
+    variant.includes("Spider") || variant.includes("Convertible") || variant.includes("Roadster")
+      ? "Convertible"
+      : variant.includes("Cullinan") || variant.includes("Bentayga")
+        ? "SUV"
+        : variant.includes("Ghost") || variant.includes("Phantom") || variant.includes("Flying Spur")
+          ? "Sedan"
+          : "Coupe",
+  searchMake: make,
+  searchModel: modelFamily !== make ? modelFamily : undefined,
+  matchTerms: [variant, ...extraTerms, ...variant.split(/\s+/)],
+  sortOrder,
+});
+
+const mclaren = (variant: string, yearStart: number, yearEnd: number | undefined, sortOrder: number, generation?: string) =>
+  singleMake("McLaren", "McLaren", variant, yearStart, yearEnd, sortOrder, generation);
+
 export const HIGHLINE_MODEL_DEFINITIONS: HighlineModelDefinition[] = [
   ferrari("296 GTB", 2022, undefined, 10, "Tipo F171"),
   ferrari("296 GTS", 2022, undefined, 11, "Tipo F171"),
@@ -217,4 +259,35 @@ export const HIGHLINE_MODEL_DEFINITIONS: HighlineModelDefinition[] = [
   gWagon("AMG G 65", 2016, 2018, 520, "W463"),
   gWagon("G 550 4x4²", 2017, 2018, 530, "W463"),
   gWagon("AMG G 63 4x4²", 2023, undefined, 531, "W463"),
+
+  // Dealer-floor coverage: makes One Exotics actually stocks (plus adjacent halo variants).
+  ferrari("F355", 1995, 1999, 140, "F129"),
+
+  mclaren("720S", 2018, 2023, 600, "P14"),
+  mclaren("720S Spider", 2019, 2023, 601, "P14"),
+  mclaren("765LT", 2021, 2023, 602, "P14"),
+  mclaren("750S", 2024, undefined, 603, "P14"),
+  mclaren("600LT", 2019, 2021, 610, "P13"),
+  mclaren("570S", 2016, 2021, 611, "P13"),
+  mclaren("Artura", 2023, undefined, 620, "M630"),
+  mclaren("GT", 2020, 2023, 630, "P13"),
+
+  singleMake("Nissan", "GT-R", "GT-R", 2009, 2024, 650, "R35", ["GTR", "GT-R Premium", "GT-R Track Edition"]),
+  singleMake("Nissan", "GT-R", "GT-R Nismo", 2015, 2024, 651, "R35", ["Nismo"]),
+
+  singleMake("Mercedes-Benz", "AMG GT", "AMG GT", 2016, 2021, 660, "C190"),
+  singleMake("Mercedes-Benz", "AMG GT", "AMG GT S", 2016, 2021, 661, "C190"),
+  singleMake("Mercedes-Benz", "AMG GT", "AMG GT R", 2017, 2021, 662, "C190"),
+  singleMake("Mercedes-Benz", "AMG GT", "AMG GT Black Series", 2021, 2021, 663, "C190"),
+
+  singleMake("Rolls-Royce", "Rolls-Royce", "Cullinan", 2019, undefined, 670, "RR31", ["Black Badge Cullinan", "Cullinan Black Badge"]),
+  singleMake("Rolls-Royce", "Rolls-Royce", "Ghost", 2010, undefined, 671, "RR4/RR5"),
+
+  singleMake("Bentley", "Continental GT", "Continental GT", 2018, undefined, 680, "3rd gen", ["Continental GT W12", "Continental GT Speed", "Continental GT V8"]),
+
+  singleMake("Audi", "R8", "R8", 2008, 2024, 690, "Type 42/4S", ["R8 V10", "R8 V10 Plus", "R8 V10 Performance"]),
+
+  singleMake("Acura", "NSX", "NSX", 2017, 2022, 700, "2nd gen", ["NSX SH-AWD", "NSX Type S"]),
+
+  singleMake("Chevrolet", "Corvette", "Corvette Z06", 2023, undefined, 710, "C8", ["Z06", "Z06 Convertible", "Z06 Coupe"]),
 ];

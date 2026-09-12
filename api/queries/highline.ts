@@ -395,13 +395,27 @@ export async function dealerDesk() {
   ]);
 
   // Market context per supported variant, excluding the dealer's own rows so
-  // the desk benchmarks against the rest of the market.
-  const marketByModel = new Map<number, { median: number; sample: number; demandSignal: "fast" | "balanced" | "slow" | null }>();
+  // the desk benchmarks against the rest of the market. Comps are bucketed by
+  // model year too: a variant-wide median spanning 15 model years produces
+  // garbage verdicts (a 2024 GT-R is not "+148% rich" vs a median of R35s from
+  // 2009), so per-unit we prefer a ±1 model-year cohort and fall back to the
+  // variant-wide median only when the cohort is too thin.
+  const marketByModel = new Map<
+    number,
+    { median: number; sample: number; byYear: Map<number, number[]>; demandSignal: "fast" | "balanced" | "slow" | null }
+  >();
   const now = Date.now();
   for (const model of modelRows) {
     const rows = activeRows.filter((listing) => listing.modelId === model.id && listing.price && listing.source !== "oneexotics");
     if (!rows.length) continue;
     const prices = rows.map((listing) => listing.price!).sort((a, b) => a - b);
+    const byYear = new Map<number, number[]>();
+    for (const listing of rows) {
+      if (!listing.year) continue;
+      const bucket = byYear.get(listing.year) ?? [];
+      bucket.push(listing.price!);
+      byYear.set(listing.year, bucket);
+    }
     const gone = delistedRows.filter((listing) => listing.modelId === model.id);
     const durations = gone
       .map((listing) => {
@@ -417,6 +431,7 @@ export async function dealerDesk() {
     marketByModel.set(model.id, {
       median: percentileOf(prices, 0.5)!, // prices is non-empty here (rows.length guard above)
       sample: rows.length,
+      byYear,
       demandSignal: medianDays == null ? null : medianDays <= 35 ? "fast" : medianDays <= 75 ? "balanced" : "slow",
     });
   }
@@ -441,8 +456,29 @@ export async function dealerDesk() {
       };
       const model = matchSupportedModel(asListing, modelRows);
       const market = model ? marketByModel.get(model.id) : undefined;
+      // Prefer a ±1 model-year comp cohort (min 3 samples) over the variant-wide median.
+      let benchmarkMedian: number | null = null;
+      let benchmarkSample = 0;
+      let benchmarkBasis: "year cohort" | "variant" | null = null;
+      if (market) {
+        if (car.year) {
+          const cohort: number[] = [];
+          for (const year of [car.year - 1, car.year, car.year + 1]) cohort.push(...(market.byYear.get(year) ?? []));
+          if (cohort.length >= 3) {
+            benchmarkMedian = percentileOf(cohort.sort((a, b) => a - b), 0.5);
+            benchmarkSample = cohort.length;
+            benchmarkBasis = "year cohort";
+          }
+        }
+        if (benchmarkMedian == null) {
+          benchmarkMedian = market.median;
+          benchmarkSample = market.sample;
+          benchmarkBasis = "variant";
+        }
+      }
       const vsMarketPct =
-        market && car.price ? Math.round(((car.price - market.median) / market.median) * 1000) / 10 : null;
+        // `|| 0` normalizes -0, which superjson would otherwise serialize as the string "-0".
+        benchmarkMedian && car.price ? Math.round(((car.price - benchmarkMedian) / benchmarkMedian) * 1000) / 10 || 0 : null;
       const verdict: "rich" | "market" | "opportunity" | "untracked" =
         vsMarketPct == null ? "untracked" : vsMarketPct >= 5 ? "rich" : vsMarketPct <= -5 ? "opportunity" : "market";
       return {
@@ -460,8 +496,9 @@ export async function dealerDesk() {
         pendingSale: car.pendingSale,
         matchedVariant: model ? model.variant : null,
         modelId: model ? model.id : null,
-        marketMedian: market?.median ?? null,
-        marketSample: market?.sample ?? null,
+        marketMedian: benchmarkMedian,
+        marketSample: benchmarkMedian != null ? benchmarkSample : null,
+        marketBasis: benchmarkBasis,
         vsMarketPct,
         demandSignal: market?.demandSignal ?? null,
         verdict,

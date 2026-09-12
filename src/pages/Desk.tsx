@@ -16,12 +16,12 @@ function miles(value?: number | null) {
 
 type SortKey = 'price' | 'vsMarketPct' | 'mileage'
 
-function VerdictChip({ verdict, pct }: { verdict: 'rich' | 'market' | 'opportunity' | 'untracked'; pct: number | null }) {
+function VerdictChip({ verdict, pct, matched }: { verdict: 'rich' | 'market' | 'opportunity' | 'untracked'; pct: number | null; matched: boolean }) {
   const config = {
     rich: { label: pct != null ? `Rich +${pct.toFixed(1)}%` : 'Rich', tone: 'border-rose-400/25 bg-rose-400/10 text-rose-300', Icon: TrendingUp },
     market: { label: pct != null ? `At market ${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%` : 'At market', tone: 'border-white/[0.08] bg-white/[0.04] text-slate-300', Icon: CheckCircle2 },
     opportunity: { label: pct != null ? `Under market ${pct.toFixed(1)}%` : 'Under market', tone: 'border-emerald-400/25 bg-emerald-400/10 text-emerald-300', Icon: TrendingDown },
-    untracked: { label: 'Untracked variant', tone: 'border-white/[0.06] bg-white/[0.02] text-slate-500', Icon: CheckCircle2 },
+    untracked: { label: matched ? 'No market data yet' : 'Untracked variant', tone: 'border-white/[0.06] bg-white/[0.02] text-slate-500', Icon: CheckCircle2 },
   }[verdict]
   return (
     <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${config.tone}`}>
@@ -177,7 +177,7 @@ function DeskBody() {
                   {unit.marketBasis === 'year cohort' && <span className="ml-1.5 rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-slate-500">±1yr</span>}
                 </td>
                 <td className="px-4 py-3.5"><DemandChip signal={unit.demandSignal} /></td>
-                <td className="px-5 py-3.5"><VerdictChip verdict={unit.verdict} pct={unit.vsMarketPct} /></td>
+                <td className="px-5 py-3.5"><VerdictChip verdict={unit.verdict} pct={unit.vsMarketPct} matched={Boolean(unit.matchedVariant)} /></td>
               </tr>
             ))}
           </tbody>

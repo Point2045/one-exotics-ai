@@ -76,13 +76,28 @@ function normalizeCar(item: unknown): DealerCar | undefined {
   };
 }
 
-/** Full dealer feed (active + sold), cached 1h. */
+/** Full dealer feed (active + sold), cached 1h. Falls back to stale cache on
+ * WAF/rate-limit errors — their host intermittently 403s datacenter IPs. */
 export async function fetchDealerInventory(): Promise<DealerCar[]> {
   if (cache && Date.now() - cache.at < CACHE_TTL_MS) return cache.cars;
-  const response = await fetch(DEALER_API, { headers: { Accept: "application/json" } });
-  if (!response.ok) throw new Error(`One Exotics feed HTTP ${response.status}`);
+  const response = await fetch(DEALER_API, {
+    headers: {
+      Accept: "application/json, text/plain, */*",
+      "Accept-Language": "en-US,en;q=0.9",
+      Referer: "https://www.oneexoticstampa.com/inventory/",
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    },
+  });
+  if (!response.ok) {
+    if (cache) return cache.cars; // stale is better than empty
+    throw new Error(`One Exotics feed HTTP ${response.status}`);
+  }
   const data = (await response.json()) as unknown;
-  if (!Array.isArray(data)) throw new Error("One Exotics feed returned a non-array payload");
+  if (!Array.isArray(data)) {
+    if (cache) return cache.cars;
+    throw new Error("One Exotics feed returned a non-array payload");
+  }
   const cars = data.map(normalizeCar).filter((car): car is DealerCar => Boolean(car));
   cache = { at: Date.now(), cars };
   return cars;

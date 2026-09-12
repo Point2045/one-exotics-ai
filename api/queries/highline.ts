@@ -486,6 +486,12 @@ export async function dealerDesk() {
   // 720S Spider, Ghost…) can have zero comps. Benchmarking against sibling
   // variants is directionally useful and beats "No market data yet"; the
   // "family" basis label keeps the weaker benchmark visible in the UI.
+  // Several makes set modelFamily = make (Ferrari, Lamborghini, McLaren,
+  // Rolls-Royce, Aston Martin) — grouping by that raw family would lump a
+  // 488 in with 812s — so for those we key on the variant's leading token
+  // ("488 GTB" → "488", "Huracán Performante" → "Huracán").
+  const familyKeyOf = (model: (typeof modelRows)[number]) =>
+    model.modelFamily !== model.make ? `${model.make}|${model.modelFamily}` : `${model.make}|${model.variant.split(/\s+/)[0]}`;
   const marketByFamily = new Map<string, CompRow[]>();
   const now = Date.now();
   for (const model of modelRows) {
@@ -497,8 +503,8 @@ export async function dealerDesk() {
         !listing.sellerName?.toLowerCase().includes("one exotics"),
     );
     if (!rows.length) continue;
-    const family = marketByFamily.get(`${model.make}|${model.modelFamily}`) ?? [];
-    marketByFamily.set(`${model.make}|${model.modelFamily}`, family);
+    const family = marketByFamily.get(familyKeyOf(model)) ?? [];
+    marketByFamily.set(familyKeyOf(model), family);
     family.push(...rows);
     const gone = delistedRows.filter((listing) => listing.modelId === model.id);
     const durations = gone
@@ -560,7 +566,7 @@ export async function dealerDesk() {
         }
       }
       if (!compRows.length && model) {
-        const familyRows = marketByFamily.get(`${model.make}|${model.modelFamily}`) ?? [];
+        const familyRows = marketByFamily.get(familyKeyOf(model)) ?? [];
         if (familyRows.length) {
           if (car.year) {
             const cohort = familyRows.filter((listing) => listing.year && Math.abs(listing.year - car.year!) <= 1);

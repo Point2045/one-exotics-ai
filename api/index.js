@@ -49275,6 +49275,7 @@ async function dealerDesk() {
     }));
   }
   const marketByModel = /* @__PURE__ */ new Map();
+  const familyKeyOf = (model) => model.modelFamily !== model.make ? `${model.make}|${model.modelFamily}` : `${model.make}|${model.variant.split(/\s+/)[0]}`;
   const marketByFamily = /* @__PURE__ */ new Map();
   const now = Date.now();
   for (const model of modelRows) {
@@ -49282,8 +49283,8 @@ async function dealerDesk() {
       (listing) => listing.modelId === model.id && listing.price && listing.source !== "oneexotics" && !listing.sellerName?.toLowerCase().includes("one exotics")
     );
     if (!rows.length) continue;
-    const family = marketByFamily.get(`${model.make}|${model.modelFamily}`) ?? [];
-    marketByFamily.set(`${model.make}|${model.modelFamily}`, family);
+    const family = marketByFamily.get(familyKeyOf(model)) ?? [];
+    marketByFamily.set(familyKeyOf(model), family);
     family.push(...rows);
     const gone = delistedRows.filter((listing) => listing.modelId === model.id);
     const durations = gone.map((listing) => {
@@ -49333,7 +49334,7 @@ async function dealerDesk() {
       }
     }
     if (!compRows.length && model) {
-      const familyRows = marketByFamily.get(`${model.make}|${model.modelFamily}`) ?? [];
+      const familyRows = marketByFamily.get(familyKeyOf(model)) ?? [];
       if (familyRows.length) {
         if (car.year) {
           const cohort = familyRows.filter((listing) => listing.year && Math.abs(listing.year - car.year) <= 1);

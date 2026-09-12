@@ -185,7 +185,15 @@ export async function marketStats() {
   const now = Date.now();
   const markets = modelRows
     .map((model) => {
-      const rows = activeRows.filter((listing) => listing.modelId === model.id && listing.price);
+      // Exclude the dealer's own units — otherwise thin variants report a
+      // "market median" derived from the dealer's own asks (circular).
+      const rows = activeRows.filter(
+        (listing) =>
+          listing.modelId === model.id &&
+          listing.price &&
+          listing.source !== "oneexotics" &&
+          !listing.sellerName?.toLowerCase().includes("one exotics"),
+      );
       if (!rows.length) return null;
 
       const prices = rows.map((listing) => listing.price!).sort((a, b) => a - b);
@@ -581,7 +589,50 @@ export async function dealerDesk() {
           }
         }
       }
-      const compPrices = compRows.map((listing) => listing.price!).sort((a, b) => a - b);
+      // Segment sanity guard: a comp set whose entire price range sits
+      // nowhere near the unit's ask cannot yield a meaningful benchmark —
+      // it's almost always the wrong segment (a GT3 RS "comped" against
+      // base Carreras via the family fallback) or a matching error. Withhold
+      // the verdict rather than render garbage. 1.6× mirrors the wide-spread
+      // warning threshold.
+      let compPrices = compRows.map((listing) => listing.price!).sort((a, b) => a - b);
+      const withheld: string[] = [];
+      if (compPrices.length && car.price) {
+        const compMin = compPrices[0];
+        const compMax = compPrices[compPrices.length - 1];
+        if (car.price > compMax * 1.6 || car.price < compMin / 1.6) {
+          withheld.push(
+            `benchmark withheld — ask $${Math.round(car.price / 1000)}K sits entirely outside the comp range ` +
+              `($${Math.round(compMin / 1000)}K–$${Math.round(compMax / 1000)}K); the available comps are the wrong segment`,
+          );
+          compPrices = [];
+          compRows = [];
+          benchmarkBasis = null;
+        }
+      }
+      // Outlier fence (Tukey, 1.5×IQR): miscategorized or fat-fingered comps
+      // (a "$1.4M 2016 GT3 RS" among $190–270K peers) would otherwise drag
+      // the median. Excluded comps are shipped separately so the drill-down
+      // shows exactly what was dropped. Applied only when ≥3 inliers remain.
+      let excludedComps: CompRow[] = [];
+      if (compPrices.length >= 6) {
+        const q1 = percentileOf(compPrices, 0.25)!; // compPrices non-empty here (length >= 6 guard)
+        const q3 = percentileOf(compPrices, 0.75)!;
+        const iqr = q3 - q1;
+        const lo = q1 - 1.5 * iqr;
+        const hi = q3 + 1.5 * iqr;
+        const inliers = compRows.filter((listing) => listing.price! >= lo && listing.price! <= hi);
+        if (inliers.length >= 3 && inliers.length < compRows.length) {
+          excludedComps = compRows.filter((listing) => listing.price! < lo || listing.price! > hi);
+          compRows = inliers;
+          compPrices = compRows.map((listing) => listing.price!).sort((a, b) => a - b);
+        }
+      }
+      if (excludedComps.length) {
+        withheld.push(
+          `${excludedComps.length} outlier comp${excludedComps.length === 1 ? "" : "s"} excluded — outside the 1.5×IQR fence (likely miscategorized or mispriced listings)`,
+        );
+      }
       const rawMedian = compPrices.length ? percentileOf(compPrices, 0.5) : null;
       const benchmarkMedian = rawMedian != null ? Math.round(rawMedian) : null;
       const benchmarkSample = compPrices.length;
@@ -591,7 +642,7 @@ export async function dealerDesk() {
       const verdict: "rich" | "market" | "opportunity" | "untracked" =
         vsMarketPct == null ? "untracked" : vsMarketPct >= 5 ? "rich" : vsMarketPct <= -5 ? "opportunity" : "market";
       // Data-quality warnings surface the limits of each benchmark honestly.
-      const warnings: string[] = [];
+      const warnings: string[] = [...withheld];
       if (benchmarkMedian != null) {
         if (benchmarkSample < 3) warnings.push("thin tape — fewer than 3 comps, directional only");
         if (benchmarkBasis === "family") warnings.push("family benchmark — sibling variants, not exact model");
@@ -628,6 +679,18 @@ export async function dealerDesk() {
             : null,
         warnings,
         comps: compRows
+          .map((listing) => ({
+            id: listing.id,
+            year: listing.year ?? null,
+            title: listing.title,
+            price: listing.price ?? null,
+            mileage: listing.mileage ?? null,
+            url: listing.url ?? null,
+            source: listing.source,
+            sellerName: listing.sellerName ?? null,
+          }))
+          .sort((a, b) => (a.price ?? 0) - (b.price ?? 0)),
+        excludedComps: excludedComps
           .map((listing) => ({
             id: listing.id,
             year: listing.year ?? null,

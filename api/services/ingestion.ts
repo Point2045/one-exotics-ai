@@ -181,7 +181,7 @@ export async function refreshListingsFromAutoDev() {
     // almost always a sale. Preserve them as unknown instead of deleting so
     // their price history survives as future comps.
     for (const search of result.searches) {
-      if (!search.exhausted) continue;
+      if (!search.exhausted || search.suppressExpiry) continue;
       expiredUnseen += await store.expireUnseenListings("auto.dev", search.make, search.model, search.externalIds);
     }
 

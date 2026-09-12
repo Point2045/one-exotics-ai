@@ -39,6 +39,8 @@ export type SearchCompletion = {
   model?: string;
   /** True when pagination reached a short page — the search saw all current inventory. */
   exhausted: boolean;
+  /** Trim-scoped searches must never drive expiry — their "all seen" covers only a slice of the model. */
+  suppressExpiry?: boolean;
   externalIds: string[];
 };
 

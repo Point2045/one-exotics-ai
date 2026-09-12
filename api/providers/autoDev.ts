@@ -152,6 +152,7 @@ async function fetchSearchPage(apiKey: string, search: (typeof HIGHLINE_SEARCHES
     "vehicle.make": search.make,
   });
   if (search.model) params.set("vehicle.model", search.model);
+  if (search.trim) params.set("vehicle.trim", search.trim);
 
   const response = await fetch(`${API_BASE}?${params.toString()}`, {
     headers: {
@@ -243,6 +244,7 @@ export async function fetchAutoDevListings(): Promise<ProviderFetchResult> {
       make: search.make,
       model: search.model,
       exhausted: false,
+      suppressExpiry: search.suppressExpiry,
       externalIds: [],
     };
     try {

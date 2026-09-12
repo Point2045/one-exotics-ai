@@ -19,6 +19,14 @@ export type HighlineSearchDefinition = {
   make: string;
   model?: string;
   family: string;
+  /** Auto.dev vehicle.trim filter — targets rare variants the shared model search starves (e.g. GT3 RS within all 911s). */
+  trim?: string;
+  /**
+   * Trim-scoped searches see only a slice of the model's inventory, so a short
+   * page means "all GT3 RSs seen", NOT "all 911s seen" — expiring unseen rows
+   * from this scope would delete every other variant. Suppress expiry.
+   */
+  suppressExpiry?: boolean;
 };
 
 export const HIGHLINE_SEARCHES: HighlineSearchDefinition[] = [
@@ -26,6 +34,13 @@ export const HIGHLINE_SEARCHES: HighlineSearchDefinition[] = [
   { key: "lamborghini-all", label: "All Lamborghini", make: "Lamborghini", family: "Lamborghini" },
   { key: "aston-martin-all", label: "All Aston Martin", make: "Aston Martin", family: "Aston Martin" },
   { key: "porsche-911", label: "Porsche 911", make: "Porsche", model: "911", family: "911" },
+  // Rare GT variants get starved by the shared 911 search's recency-sorted
+  // window (~120 slots across thousands of 911s), so they get dedicated
+  // trim-scoped searches. Suppressed expiry: a short page only means the
+  // trim's inventory was fully seen, not the model's.
+  { key: "porsche-911-gt3", label: "Porsche 911 GT3", make: "Porsche", model: "911", family: "911", trim: "GT3", suppressExpiry: true },
+  { key: "porsche-911-gt3-rs", label: "Porsche 911 GT3 RS", make: "Porsche", model: "911", family: "911", trim: "GT3 RS", suppressExpiry: true },
+  { key: "porsche-911-gt3-touring", label: "Porsche 911 GT3 Touring", make: "Porsche", model: "911", family: "911", trim: "GT3 Touring", suppressExpiry: true },
   { key: "mercedes-g-class", label: "Mercedes G-Class", make: "Mercedes-Benz", model: "G-Class", family: "G-Class" },
   { key: "mercedes-g550", label: "Mercedes G 550", make: "Mercedes-Benz", model: "G 550", family: "G-Class" },
   { key: "mercedes-amg-g63", label: "Mercedes-AMG G 63", make: "Mercedes-Benz", model: "AMG G 63", family: "G-Class" },

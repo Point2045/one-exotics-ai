@@ -59,10 +59,21 @@ function UnitEvidence({ unit }: { unit: DeskUnit }) {
   if (unit.verdict === 'untracked' || unit.marketMedian == null) {
     return (
       <div className="px-5 py-5 text-sm text-slate-400">
+        {unit.warnings.length > 0 && (
+          <div className="mb-3 space-y-1.5">
+            {unit.warnings.map((warning) => (
+              <p key={warning} className="flex items-start gap-1.5 text-xs leading-5 text-amber-300/90">
+                <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                {warning}
+              </p>
+            ))}
+          </div>
+        )}
         {unit.matchedVariant ? (
           <>
-            Matched to tracked variant <span className="font-semibold text-white">{unit.matchedVariant}</span>, but no market
-            comps for it exist in the current snapshot. This resolves as market coverage accrues on the next refreshes.
+            Matched to tracked variant <span className="font-semibold text-white">{unit.matchedVariant}</span>, but no
+            trustworthy market comps exist in the current snapshot. This resolves as market coverage accrues on the next
+            refreshes — a verdict is only rendered when the comp set is in the right segment and price range.
           </>
         ) : (
           <>
@@ -92,7 +103,8 @@ function UnitEvidence({ unit }: { unit: DeskUnit }) {
           </li>
           <li>
             <span className="text-slate-500">2 · Median:</span> middle price of the sorted comp set (average of the two
-            middle prices when n is even) = <span className="font-semibold text-white">{money(unit.marketMedian)}</span>.
+            middle prices when n is even; comps outside the 1.5×IQR fence excluded as outliers) ={' '}
+            <span className="font-semibold text-white">{money(unit.marketMedian)}</span>.
           </li>
           <li>
             <span className="text-slate-500">3 · Compare:</span> ask {money(unit.price)} vs {money(unit.marketMedian)} →{' '}
@@ -154,6 +166,24 @@ function UnitEvidence({ unit }: { unit: DeskUnit }) {
                 <td className="px-3 py-2 text-slate-400">{miles(comp.mileage)}</td>
                 <td className="px-3 py-2 text-slate-500">{comp.source}</td>
                 <td className="max-w-[180px] truncate px-3 py-2 text-slate-500">{comp.sellerName ?? '—'}</td>
+              </tr>
+            ))}
+            {unit.excludedComps.map((comp) => (
+              <tr key={comp.id} className="border-b border-white/[0.04] opacity-50">
+                <td className="max-w-[320px] truncate px-3 py-2 text-slate-500 line-through">
+                  {comp.url ? (
+                    <a href={comp.url} target="_blank" rel="noreferrer" className="hover:text-slate-300 hover:underline">
+                      {comp.title}
+                    </a>
+                  ) : (
+                    comp.title
+                  )}
+                  <span className="ml-1.5 rounded bg-rose-400/15 px-1 py-0.5 text-[10px] text-rose-300 no-underline">outlier</span>
+                </td>
+                <td className="px-3 py-2 text-slate-500 line-through">{money(comp.price)}</td>
+                <td className="px-3 py-2 text-slate-600">{miles(comp.mileage)}</td>
+                <td className="px-3 py-2 text-slate-600">{comp.source}</td>
+                <td className="max-w-[180px] truncate px-3 py-2 text-slate-600">{comp.sellerName ?? '—'}</td>
               </tr>
             ))}
           </tbody>

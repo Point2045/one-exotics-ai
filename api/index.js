@@ -40939,6 +40939,13 @@ var HIGHLINE_SEARCHES = [
   { key: "lamborghini-all", label: "All Lamborghini", make: "Lamborghini", family: "Lamborghini" },
   { key: "aston-martin-all", label: "All Aston Martin", make: "Aston Martin", family: "Aston Martin" },
   { key: "porsche-911", label: "Porsche 911", make: "Porsche", model: "911", family: "911" },
+  // Rare GT variants get starved by the shared 911 search's recency-sorted
+  // window (~120 slots across thousands of 911s), so they get dedicated
+  // trim-scoped searches. Suppressed expiry: a short page only means the
+  // trim's inventory was fully seen, not the model's.
+  { key: "porsche-911-gt3", label: "Porsche 911 GT3", make: "Porsche", model: "911", family: "911", trim: "GT3", suppressExpiry: true },
+  { key: "porsche-911-gt3-rs", label: "Porsche 911 GT3 RS", make: "Porsche", model: "911", family: "911", trim: "GT3 RS", suppressExpiry: true },
+  { key: "porsche-911-gt3-touring", label: "Porsche 911 GT3 Touring", make: "Porsche", model: "911", family: "911", trim: "GT3 Touring", suppressExpiry: true },
   { key: "mercedes-g-class", label: "Mercedes G-Class", make: "Mercedes-Benz", model: "G-Class", family: "G-Class" },
   { key: "mercedes-g550", label: "Mercedes G 550", make: "Mercedes-Benz", model: "G 550", family: "G-Class" },
   { key: "mercedes-amg-g63", label: "Mercedes-AMG G 63", make: "Mercedes-Benz", model: "AMG G 63", family: "G-Class" },
@@ -41267,6 +41274,7 @@ async function fetchSearchPage(apiKey3, search, page) {
     "vehicle.make": search.make
   });
   if (search.model) params.set("vehicle.model", search.model);
+  if (search.trim) params.set("vehicle.trim", search.trim);
   const response = await fetch(`${API_BASE3}?${params.toString()}`, {
     headers: {
       Authorization: `Bearer ${apiKey3}`,
@@ -41332,6 +41340,7 @@ async function fetchAutoDevListings() {
       make: search.make,
       model: search.model,
       exhausted: false,
+      suppressExpiry: search.suppressExpiry,
       externalIds: []
     };
     try {
@@ -48821,7 +48830,7 @@ async function refreshListingsFromAutoDev() {
       upserted += 1;
     }
     for (const search of result.searches) {
-      if (!search.exhausted) continue;
+      if (!search.exhausted || search.suppressExpiry) continue;
       expiredUnseen += await store.expireUnseenListings("auto.dev", search.make, search.model, search.externalIds);
     }
     const storeMode = store.mode;
@@ -49075,7 +49084,9 @@ async function marketStats() {
   }
   const now = Date.now();
   const markets = modelRows.map((model) => {
-    const rows = activeRows.filter((listing) => listing.modelId === model.id && listing.price);
+    const rows = activeRows.filter(
+      (listing) => listing.modelId === model.id && listing.price && listing.source !== "oneexotics" && !listing.sellerName?.toLowerCase().includes("one exotics")
+    );
     if (!rows.length) return null;
     const prices = rows.map((listing) => listing.price).sort((a, b) => a - b);
     const mileages = rows.map((listing) => listing.mileage).filter((mileage) => Boolean(mileage));
@@ -49349,7 +49360,39 @@ async function dealerDesk() {
         }
       }
     }
-    const compPrices = compRows.map((listing) => listing.price).sort((a, b) => a - b);
+    let compPrices = compRows.map((listing) => listing.price).sort((a, b) => a - b);
+    const withheld = [];
+    if (compPrices.length && car.price) {
+      const compMin = compPrices[0];
+      const compMax = compPrices[compPrices.length - 1];
+      if (car.price > compMax * 1.6 || car.price < compMin / 1.6) {
+        withheld.push(
+          `benchmark withheld \u2014 ask $${Math.round(car.price / 1e3)}K sits entirely outside the comp range ($${Math.round(compMin / 1e3)}K\u2013$${Math.round(compMax / 1e3)}K); the available comps are the wrong segment`
+        );
+        compPrices = [];
+        compRows = [];
+        benchmarkBasis = null;
+      }
+    }
+    let excludedComps = [];
+    if (compPrices.length >= 6) {
+      const q1 = percentileOf(compPrices, 0.25);
+      const q3 = percentileOf(compPrices, 0.75);
+      const iqr = q3 - q1;
+      const lo = q1 - 1.5 * iqr;
+      const hi = q3 + 1.5 * iqr;
+      const inliers = compRows.filter((listing) => listing.price >= lo && listing.price <= hi);
+      if (inliers.length >= 3 && inliers.length < compRows.length) {
+        excludedComps = compRows.filter((listing) => listing.price < lo || listing.price > hi);
+        compRows = inliers;
+        compPrices = compRows.map((listing) => listing.price).sort((a, b) => a - b);
+      }
+    }
+    if (excludedComps.length) {
+      withheld.push(
+        `${excludedComps.length} outlier comp${excludedComps.length === 1 ? "" : "s"} excluded \u2014 outside the 1.5\xD7IQR fence (likely miscategorized or mispriced listings)`
+      );
+    }
     const rawMedian = compPrices.length ? percentileOf(compPrices, 0.5) : null;
     const benchmarkMedian = rawMedian != null ? Math.round(rawMedian) : null;
     const benchmarkSample = compPrices.length;
@@ -49358,7 +49401,7 @@ async function dealerDesk() {
       benchmarkMedian && car.price ? Math.round((car.price - benchmarkMedian) / benchmarkMedian * 1e3) / 10 || 0 : null
     );
     const verdict = vsMarketPct == null ? "untracked" : vsMarketPct >= 5 ? "rich" : vsMarketPct <= -5 ? "opportunity" : "market";
-    const warnings = [];
+    const warnings = [...withheld];
     if (benchmarkMedian != null) {
       if (benchmarkSample < 3) warnings.push("thin tape \u2014 fewer than 3 comps, directional only");
       if (benchmarkBasis === "family") warnings.push("family benchmark \u2014 sibling variants, not exact model");
@@ -49393,6 +49436,16 @@ async function dealerDesk() {
       } : null,
       warnings,
       comps: compRows.map((listing) => ({
+        id: listing.id,
+        year: listing.year ?? null,
+        title: listing.title,
+        price: listing.price ?? null,
+        mileage: listing.mileage ?? null,
+        url: listing.url ?? null,
+        source: listing.source,
+        sellerName: listing.sellerName ?? null
+      })).sort((a, b) => (a.price ?? 0) - (b.price ?? 0)),
+      excludedComps: excludedComps.map((listing) => ({
         id: listing.id,
         year: listing.year ?? null,
         title: listing.title,

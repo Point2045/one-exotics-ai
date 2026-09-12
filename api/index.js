@@ -41403,10 +41403,23 @@ function normalizeCar(item) {
 }
 async function fetchDealerInventory() {
   if (cache2 && Date.now() - cache2.at < CACHE_TTL_MS2) return cache2.cars;
-  const response = await fetch(DEALER_API, { headers: { Accept: "application/json" } });
-  if (!response.ok) throw new Error(`One Exotics feed HTTP ${response.status}`);
+  const response = await fetch(DEALER_API, {
+    headers: {
+      Accept: "application/json, text/plain, */*",
+      "Accept-Language": "en-US,en;q=0.9",
+      Referer: "https://www.oneexoticstampa.com/inventory/",
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    }
+  });
+  if (!response.ok) {
+    if (cache2) return cache2.cars;
+    throw new Error(`One Exotics feed HTTP ${response.status}`);
+  }
   const data = await response.json();
-  if (!Array.isArray(data)) throw new Error("One Exotics feed returned a non-array payload");
+  if (!Array.isArray(data)) {
+    if (cache2) return cache2.cars;
+    throw new Error("One Exotics feed returned a non-array payload");
+  }
   const cars = data.map(normalizeCar).filter((car) => Boolean(car));
   cache2 = { at: Date.now(), cars };
   return cars;
@@ -49213,16 +49226,46 @@ async function listingDetail(id) {
 }
 async function dealerDesk() {
   const store = await getStore();
-  const [cars, modelRows, activeRows, delistedRows] = await Promise.all([
-    fetchDealerInventory(),
+  const [modelRows, activeRows, delistedRows] = await Promise.all([
     store.allSupportedModels(),
     store.activeListings(5e3),
     store.recentlyDelisted(180, 5e3)
   ]);
+  let cars;
+  let feedSource;
+  let feedError = null;
+  try {
+    cars = await fetchDealerInventory();
+    feedSource = "dealer feed";
+  } catch (error48) {
+    feedError = error48 instanceof Error ? error48.message : "dealer feed unavailable";
+    feedSource = "tracked listings";
+    cars = activeRows.filter((listing) => listing.sellerName?.toLowerCase().includes("one exotics")).map((listing) => ({
+      id: listing.externalId,
+      stockno: void 0,
+      vin: listing.vin ?? void 0,
+      year: listing.year ?? void 0,
+      make: listing.make,
+      model: listing.model,
+      trim: listing.trim ?? void 0,
+      mileage: listing.mileage ?? void 0,
+      price: listing.price ?? void 0,
+      exteriorColor: listing.exteriorColor ?? void 0,
+      interiorColor: listing.interiorColor ?? void 0,
+      bodyStyle: listing.bodyStyle ?? void 0,
+      sold: false,
+      pendingSale: false,
+      url: listing.url ?? void 0,
+      imageUrl: listing.imageUrl ?? void 0,
+      carfaxUrl: listing.carfaxUrl ?? void 0
+    }));
+  }
   const marketByModel = /* @__PURE__ */ new Map();
   const now = Date.now();
   for (const model of modelRows) {
-    const rows = activeRows.filter((listing) => listing.modelId === model.id && listing.price && listing.source !== "oneexotics");
+    const rows = activeRows.filter(
+      (listing) => listing.modelId === model.id && listing.price && listing.source !== "oneexotics" && !listing.sellerName?.toLowerCase().includes("one exotics")
+    );
     if (!rows.length) continue;
     const prices = rows.map((listing) => listing.price).sort((a, b) => a - b);
     const byYear = /* @__PURE__ */ new Map();
@@ -49334,6 +49377,8 @@ async function dealerDesk() {
   return {
     computedAt: new Date(now).toISOString(),
     dealer: "One Exotics Luxury Vehicles LLC \xB7 Tampa, FL",
+    feedSource,
+    feedError,
     summary: {
       activeUnits: activeCars.length,
       pendingSales: activeCars.filter((car) => car.pendingSale).length,

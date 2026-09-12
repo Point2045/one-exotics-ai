@@ -186,6 +186,14 @@ function DeskBody() {
         {desk.error && <p className="p-8 text-rose-300">Desk feed unavailable: {desk.error.message}</p>}
       </div>
 
+      {data && data.feedSource === 'tracked listings' && (
+        <p className="mt-4 rounded-2xl border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-xs leading-5 text-amber-200">
+          Dealer site feed is unreachable from our servers right now ({data.feedError ?? 'blocked'}), so the floor below is
+          reconstructed from tracked aggregator listings carrying the dealer&apos;s name — coverage may be partial. Sold-mix
+          history is unavailable in this mode.
+        </p>
+      )}
+
       {data && data.soldMix.length > 0 && (
         <div className="mt-12">
           <h2 className="font-display text-3xl tracking-[-0.02em] text-white">What the desk actually turns</h2>

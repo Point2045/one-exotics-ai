@@ -387,12 +387,47 @@ export async function listingDetail(id: number) {
  */
 export async function dealerDesk() {
   const store = await getStore();
-  const [cars, modelRows, activeRows, delistedRows] = await Promise.all([
-    fetchDealerInventory(),
+  const [modelRows, activeRows, delistedRows] = await Promise.all([
     store.allSupportedModels(),
     store.activeListings(5000),
     store.recentlyDelisted(180, 5000),
   ]);
+
+  // Primary source: the dealer's own site feed. Their WAF intermittently 403s
+  // datacenter IPs (Vercel), so when the feed fails we reconstruct the floor
+  // from our own tracked listings carrying the dealer's name — partial
+  // coverage (only what they list on the aggregators) but the desk never dies.
+  let cars: Awaited<ReturnType<typeof fetchDealerInventory>>;
+  let feedSource: "dealer feed" | "tracked listings";
+  let feedError: string | null = null;
+  try {
+    cars = await fetchDealerInventory();
+    feedSource = "dealer feed";
+  } catch (error) {
+    feedError = error instanceof Error ? error.message : "dealer feed unavailable";
+    feedSource = "tracked listings";
+    cars = activeRows
+      .filter((listing) => listing.sellerName?.toLowerCase().includes("one exotics"))
+      .map((listing) => ({
+        id: listing.externalId,
+        stockno: undefined,
+        vin: listing.vin ?? undefined,
+        year: listing.year ?? undefined,
+        make: listing.make,
+        model: listing.model,
+        trim: listing.trim ?? undefined,
+        mileage: listing.mileage ?? undefined,
+        price: listing.price ?? undefined,
+        exteriorColor: listing.exteriorColor ?? undefined,
+        interiorColor: listing.interiorColor ?? undefined,
+        bodyStyle: listing.bodyStyle ?? undefined,
+        sold: false,
+        pendingSale: false,
+        url: listing.url ?? undefined,
+        imageUrl: listing.imageUrl ?? undefined,
+        carfaxUrl: listing.carfaxUrl ?? undefined,
+      }));
+  }
 
   // Market context per supported variant, excluding the dealer's own rows so
   // the desk benchmarks against the rest of the market. Comps are bucketed by
@@ -406,7 +441,13 @@ export async function dealerDesk() {
   >();
   const now = Date.now();
   for (const model of modelRows) {
-    const rows = activeRows.filter((listing) => listing.modelId === model.id && listing.price && listing.source !== "oneexotics");
+    const rows = activeRows.filter(
+      (listing) =>
+        listing.modelId === model.id &&
+        listing.price &&
+        listing.source !== "oneexotics" &&
+        !listing.sellerName?.toLowerCase().includes("one exotics"),
+    );
     if (!rows.length) continue;
     const prices = rows.map((listing) => listing.price!).sort((a, b) => a - b);
     const byYear = new Map<number, number[]>();
@@ -531,6 +572,8 @@ export async function dealerDesk() {
   return {
     computedAt: new Date(now).toISOString(),
     dealer: "One Exotics Luxury Vehicles LLC · Tampa, FL",
+    feedSource,
+    feedError,
     summary: {
       activeUnits: activeCars.length,
       pendingSales: activeCars.filter((car) => car.pendingSale).length,

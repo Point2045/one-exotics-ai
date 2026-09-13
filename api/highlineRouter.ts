@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createRouter, publicQuery } from "./middleware";
 import { fetchBatComps } from "./providers/batComps";
 import { fetchVinHistory } from "./providers/marketcheck";
-import { dashboardSummary, dealerDesk, dealRadar, listingDetail, listSupportedModels, marketStats, soldMarket } from "./queries/highline";
+import { dashboardSummary, dealerDesk, dealRadar, deskOutlook, listingDetail, listSupportedModels, marketStats, soldMarket } from "./queries/highline";
 import { ensureHighlineReady } from "./services/bootstrap";
 import { buildVariantForecast } from "./services/forecast";
 import { latestIngestionRun, refreshListingsFromAutoDev } from "./services/ingestion";
@@ -174,4 +174,12 @@ export const highlineRouter = createRouter({
     await ensureHighlineReady();
     return dealerDesk();
   }),
+
+  /** Per-unit price outlook: aging curve + BaT market drift (lazy — spends parse.bot credits). */
+  deskOutlook: publicQuery
+    .input(z.object({ modelId: z.number().int().positive(), year: z.number().int().min(1950).max(2100).optional() }))
+    .query(async ({ input }) => {
+      await ensureHighlineReady();
+      return deskOutlook(input);
+    }),
 });

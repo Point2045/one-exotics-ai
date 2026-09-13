@@ -40614,10 +40614,10 @@ async function fetchBatComps(make, modelFamily, opts = {}) {
   const includeResults = opts.includeResults ?? true;
   const variantFirstWord = opts.variant?.split(/\s+/)[0];
   const candidates = [
-    modelFamily.toLowerCase() !== make.toLowerCase() ? modelFamily : void 0,
+    opts.variant,
     variantFirstWord,
-    opts.searchModel ?? void 0,
-    opts.variant
+    modelFamily.toLowerCase() !== make.toLowerCase() ? modelFamily : void 0,
+    opts.searchModel ?? void 0
   ].filter((candidate) => Boolean(candidate));
   const { makeSlug, modelSlug } = await resolveSlugs(make, candidates);
   const base = {
@@ -40687,10 +40687,10 @@ async function fetchBatSalesHistory(make, modelFamily, opts = {}) {
   const maxPages = Math.max(1, Math.min(opts.maxPages ?? 4, 6));
   const variantFirstWord = opts.variant?.split(/\s+/)[0];
   const candidates = [
-    modelFamily.toLowerCase() !== make.toLowerCase() ? modelFamily : void 0,
+    opts.variant,
     variantFirstWord,
-    opts.searchModel ?? void 0,
-    opts.variant
+    modelFamily.toLowerCase() !== make.toLowerCase() ? modelFamily : void 0,
+    opts.searchModel ?? void 0
   ].filter((candidate) => Boolean(candidate));
   const { makeSlug, modelSlug } = await resolveSlugs(make, candidates);
   const cutoff = Date.now() - 5 * 365 * 864e5;
@@ -48964,6 +48964,243 @@ async function ingestMarketCheckSellThrough() {
   return result;
 }
 
+// api/services/expertKnowledge.ts
+var EXPERT_RULES = [
+  {
+    id: "ex-0001",
+    author: "GM (example)",
+    createdAt: "2026-08-09",
+    status: "draft",
+    match: { make: "Porsche", variantIncludes: "GT3" },
+    effect: { kind: "signal", signal: "manual_premium" },
+    rationale: "Example rule: Touring/manual GT cars pull a premium over PDK that blended auction medians hide. Price them off the manual comps only.",
+    reviewAfter: "2026-11-09"
+  }
+];
+function matches(rule, model) {
+  const norm = (value) => (value ?? "").toLowerCase();
+  const { match: match2 } = rule;
+  if (match2.make && norm(match2.make) !== norm(model.make)) return false;
+  if (match2.modelFamily && norm(match2.modelFamily) !== norm(model.modelFamily)) return false;
+  if (match2.generation && norm(match2.generation) !== norm(model.generation)) return false;
+  if (match2.variantIncludes && !norm(model.variant).includes(norm(match2.variantIncludes))) return false;
+  return true;
+}
+var MAX_DRIFT_ADJUST_LOG = Math.log(1.1);
+function resolveExpertOverlay(model) {
+  const active = EXPERT_RULES.filter((rule) => rule.status === "active" && matches(rule, model));
+  if (!active.length) return null;
+  const overlay = { driftLogAdjust: 0, confidenceCap: null, signals: [], notes: [], applied: [] };
+  for (const rule of active) {
+    switch (rule.effect.kind) {
+      case "drift_adjust": {
+        const logDelta = rule.effect.annualizedBps / 1e4;
+        overlay.driftLogAdjust += logDelta;
+        overlay.applied.push({
+          id: rule.id,
+          author: rule.author,
+          effectLabel: `drift ${rule.effect.annualizedBps >= 0 ? "+" : ""}${(rule.effect.annualizedBps / 100).toFixed(1)}%/yr`,
+          rationale: rule.rationale
+        });
+        break;
+      }
+      case "confidence_cap": {
+        overlay.confidenceCap = Math.min(overlay.confidenceCap ?? 98, rule.effect.maxScore);
+        overlay.applied.push({
+          id: rule.id,
+          author: rule.author,
+          effectLabel: `confidence capped at ${rule.effect.maxScore}`,
+          rationale: rule.rationale
+        });
+        break;
+      }
+      case "signal": {
+        if (!overlay.signals.includes(rule.effect.signal)) overlay.signals.push(rule.effect.signal);
+        overlay.applied.push({ id: rule.id, author: rule.author, effectLabel: rule.effect.signal.replace(/_/g, " "), rationale: rule.rationale });
+        break;
+      }
+      case "note": {
+        overlay.notes.push({ author: rule.author, createdAt: rule.createdAt, text: rule.rationale });
+        break;
+      }
+    }
+  }
+  overlay.driftLogAdjust = Math.max(-MAX_DRIFT_ADJUST_LOG, Math.min(MAX_DRIFT_ADJUST_LOG, overlay.driftLogAdjust));
+  return overlay;
+}
+
+// api/services/forecast.ts
+var DAY_MS = 864e5;
+var TAU_DAYS = 540;
+var MAX_ANNUAL_LOG_RATE = 0.28;
+var WINDOWS = [
+  { label: "6mo", days: 182 },
+  { label: "1yr", days: 365 },
+  { label: "3yr", days: 1095 },
+  { label: "all", days: Number.POSITIVE_INFINITY }
+];
+function medianOf(values) {
+  const sorted = values.filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  return sorted[Math.floor((sorted.length - 1) * 0.5)];
+}
+function clamp2(value, lo, hi) {
+  return Math.max(lo, Math.min(hi, value));
+}
+function fitLogLinear(points) {
+  const n = points.length;
+  if (n < 4) return null;
+  const t0 = points[0].ts;
+  const xs = points.map((point) => (point.ts - t0) / DAY_MS);
+  const ys = points.map((point) => Math.log(point.price));
+  const xBar = xs.reduce((sum, x) => sum + x, 0) / n;
+  const yBar = ys.reduce((sum, y) => sum + y, 0) / n;
+  let numerator = 0;
+  let denominator = 0;
+  for (let index2 = 0; index2 < n; index2 += 1) {
+    numerator += (xs[index2] - xBar) * (ys[index2] - yBar);
+    denominator += (xs[index2] - xBar) ** 2;
+  }
+  if (denominator <= 0) return null;
+  const slope = numerator / denominator;
+  const intercept = yBar - slope * xBar;
+  const residualStd = Math.sqrt(ys.reduce((sum, y, index2) => sum + (y - (intercept + slope * xs[index2])) ** 2, 0) / n);
+  return { slope, intercept, residualStd, count: n };
+}
+var annualizedPctOf = (slope) => Math.round((Math.exp(clamp2(slope * 365, -MAX_ANNUAL_LOG_RATE, MAX_ANNUAL_LOG_RATE)) - 1) * 1e3) / 10;
+async function buildVariantForecast(modelId) {
+  const store = await getStore();
+  const model = await store.findSupportedModelById(modelId);
+  if (!model) throw new Error("Unknown model");
+  const history = await fetchBatSalesHistory(model.make, model.modelFamily, {
+    searchModel: model.searchModel,
+    variant: model.variant,
+    maxPages: 4
+  });
+  if (!history.configured) return { configured: false };
+  if (!history.matched) {
+    return { configured: true, matched: false, baTModel: history.baTModel ?? null, error: history.error ?? "No dated sales" };
+  }
+  const usable = history.sales.filter((sale) => sale.price > 1e4);
+  const sold = usable.filter((sale) => sale.result === "sold");
+  const n = sold.length;
+  const spanDays = n >= 2 ? (sold[n - 1].ts - sold[0].ts) / DAY_MS : 0;
+  const lastSaleTs = sold[n - 1]?.ts ?? 0;
+  const buckets = /* @__PURE__ */ new Map();
+  for (const sale of sold) {
+    const date6 = new Date(sale.ts);
+    const key = `${date6.getUTCFullYear()}-Q${Math.floor(date6.getUTCMonth() / 3) + 1}`;
+    const bucket = buckets.get(key) ?? { prices: [], tsSum: 0 };
+    bucket.prices.push(sale.price);
+    bucket.tsSum += sale.ts;
+    buckets.set(key, bucket);
+  }
+  const quarterly = [...buckets.entries()].map(([quarter, bucket]) => ({
+    quarter,
+    median: medianOf(bucket.prices),
+    count: bucket.prices.length,
+    ts: Math.round(bucket.tsSum / bucket.prices.length)
+  })).sort((a, b) => a.quarter.localeCompare(b.quarter));
+  const windowFits = WINDOWS.map((window2) => {
+    const points = window2.days === Number.POSITIVE_INFINITY ? sold : sold.filter((sale) => sale.ts >= lastSaleTs - window2.days * DAY_MS);
+    const fit = fitLogLinear(points);
+    return {
+      label: window2.label,
+      days: window2.days === Number.POSITIVE_INFINITY ? null : window2.days,
+      count: points.length,
+      annualizedPct: fit ? annualizedPctOf(fit.slope) : null,
+      fit
+    };
+  });
+  const fitted = windowFits.filter((window2) => window2.fit !== null);
+  const allTime = windowFits[windowFits.length - 1];
+  let agreement = null;
+  if (allTime.fit && fitted.length >= 2) {
+    const referenceSign = Math.sign(allTime.fit.slope);
+    const agreeing = fitted.filter((window2) => Math.abs(window2.fit.slope) < 1e-6 || Math.sign(window2.fit.slope) === referenceSign).length;
+    agreement = { agreeing, total: fitted.length };
+  }
+  const residualStdAll = allTime.fit?.residualStd ?? 0.6;
+  const daysSinceLastSale = lastSaleTs ? (Date.now() - lastSaleTs) / DAY_MS : Number.POSITIVE_INFINITY;
+  const soldShare = usable.length ? n / usable.length : 0;
+  let confidenceScore = 0;
+  confidenceScore += Math.min(30, Math.round(30 * Math.min(1, n / 60)));
+  confidenceScore += Math.min(20, Math.round(20 * Math.min(1, spanDays / 1825)));
+  if (agreement) confidenceScore += Math.round(20 * agreement.agreeing / agreement.total);
+  confidenceScore += Math.round(15 * clamp2((0.6 - residualStdAll) / 0.45, 0, 1));
+  confidenceScore += daysSinceLastSale <= 45 ? 8 : daysSinceLastSale <= 120 ? 5 : daysSinceLastSale <= 240 ? 2 : 0;
+  confidenceScore += Math.round(5 * clamp2((soldShare - 0.4) / 0.4, 0, 1));
+  const overlay = resolveExpertOverlay(model);
+  if (overlay?.confidenceCap != null) confidenceScore = Math.min(confidenceScore, overlay.confidenceCap);
+  confidenceScore = Math.min(98, confidenceScore);
+  const confidence = confidenceScore >= 70 ? "solid" : confidenceScore >= 40 ? "indicative" : "thin";
+  let regression = null;
+  if (confidence !== "thin" && allTime.fit && n >= 12 && spanDays >= 270) {
+    const annualLogRateOf = (fit) => clamp2(fit.slope * 365, -MAX_ANNUAL_LOG_RATE, MAX_ANNUAL_LOG_RATE);
+    const longRaw = annualLogRateOf(allTime.fit);
+    const nearWindows = [windowFits[0], windowFits[1]].filter((window2) => window2.fit !== null);
+    const shortRaw = nearWindows.length > 0 ? nearWindows.reduce((sum, window2) => sum + annualLogRateOf(window2.fit) * window2.fit.count, 0) / nearWindows.reduce((sum, window2) => sum + window2.fit.count, 0) : windowFits[2].fit ? annualLogRateOf(windowFits[2].fit) : longRaw;
+    const driftAdjust = overlay?.driftLogAdjust ?? 0;
+    const shortRate = clamp2(shortRaw + driftAdjust, -MAX_ANNUAL_LOG_RATE, MAX_ANNUAL_LOG_RATE);
+    const longRate = clamp2(longRaw + driftAdjust, -MAX_ANNUAL_LOG_RATE, MAX_ANNUAL_LOG_RATE);
+    const t0 = sold[0].ts;
+    const tNowDays = (Date.now() - t0) / DAY_MS;
+    const anchor = Math.exp(allTime.fit.intercept + allTime.fit.slope * tNowDays);
+    const cumLog = (hDays) => longRate * (hDays / 365) + (shortRate - longRate) * (TAU_DAYS / 365) * (1 - Math.exp(-hDays / TAU_DAYS));
+    const project = (hDays) => anchor * Math.exp(cumLog(hDays));
+    const sigma = (hDays) => allTime.fit.residualStd * Math.sqrt(hDays / 365);
+    const projectionCurve = Array.from({ length: 37 }, (_, month) => {
+      const hDays = month * 30.4;
+      return { ts: Math.round(Date.now() + hDays * DAY_MS), price: Math.round(project(hDays)) };
+    });
+    regression = {
+      annualizedPct: Math.round((Math.exp(cumLog(365)) - 1) * 1e3) / 10,
+      shortTermPct: Math.round((Math.exp(shortRate) - 1) * 1e3) / 10,
+      longTermPct: Math.round((Math.exp(longRate) - 1) * 1e3) / 10,
+      trendLine: [
+        { ts: t0, price: Math.round(Math.exp(allTime.fit.intercept)) },
+        { ts: Math.round(Date.now()), price: Math.round(anchor) }
+      ],
+      projectionCurve,
+      projection: [182, 365, 1095, 1825].map((daysAhead) => {
+        const base = project(daysAhead);
+        const band = sigma(daysAhead);
+        return {
+          monthsAhead: Math.round(daysAhead / 30.4),
+          ts: Math.round(Date.now() + daysAhead * DAY_MS),
+          base: Math.round(base),
+          bear: Math.round(base * Math.exp(-band)),
+          bull: Math.round(base * Math.exp(+band))
+        };
+      })
+    };
+  }
+  return {
+    configured: true,
+    matched: true,
+    baTModel: history.baTModel ?? null,
+    saleCount: n,
+    bidToCount: usable.length - n,
+    spanStart: sold[0]?.date ?? null,
+    spanEnd: sold[n - 1]?.date ?? null,
+    allTimeMedian: medianOf(sold.map((sale) => sale.price)),
+    quarterly,
+    windows: windowFits.map((window2) => ({ label: window2.label, count: window2.count, annualizedPct: window2.annualizedPct })),
+    windowAgreement: agreement,
+    regression,
+    confidence,
+    confidenceScore,
+    expert: overlay ? {
+      applied: overlay.applied,
+      signals: overlay.signals,
+      notes: overlay.notes
+    } : null,
+    pagesFetched: history.pagesFetched,
+    source: "Bring a Trailer via parse.bot",
+    points: usable.map((sale) => ({ ts: sale.ts, price: sale.price, result: sale.result }))
+  };
+}
+
 // api/queries/highline.ts
 var actionPriority = { pursue: 0, inspect: 1, negotiate: 2, pass: 3 };
 var COMMERCIAL_USAGE = /* @__PURE__ */ new Set(["rental", "fleet", "commercial", "lease", "taxi", "government", "police"]);
@@ -49066,6 +49303,46 @@ function percentileOf(values, fraction) {
   const upper = Math.ceil(position);
   if (lower === upper) return sorted[lower];
   return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
+}
+var clampNumber = (value, lo, hi) => Math.min(hi, Math.max(lo, value));
+function familyKeyOfModel(model) {
+  return model.modelFamily !== model.make ? `${model.make}|${model.modelFamily}` : `${model.make}|${model.variant.split(/\s+/)[0]}`;
+}
+function fenceCompRows(rows) {
+  const prices = rows.map((row) => row.price).sort((a, b) => a - b);
+  if (prices.length < 6) return rows;
+  const q1 = percentileOf(prices, 0.25);
+  const q3 = percentileOf(prices, 0.75);
+  const iqr = q3 - q1;
+  const kept = rows.filter((row) => row.price >= q1 - 1.5 * iqr && row.price <= q3 + 1.5 * iqr);
+  return kept.length >= 3 ? kept : rows;
+}
+function fitPriceLadder(rows) {
+  const points = rows.filter((row) => row.year && row.price).map((row) => ({ year: row.year, logPrice: Math.log(row.price) }));
+  const distinctYears = new Set(points.map((point) => point.year));
+  if (points.length < 6 || distinctYears.size < 4) return null;
+  const n = points.length;
+  const xBar = points.reduce((sum, point) => sum + point.year, 0) / n;
+  const yBar = points.reduce((sum, point) => sum + point.logPrice, 0) / n;
+  let numerator = 0;
+  let denominator = 0;
+  for (const point of points) {
+    numerator += (point.year - xBar) * (point.logPrice - yBar);
+    denominator += (point.year - xBar) ** 2;
+  }
+  if (denominator <= 0) return null;
+  const beta = clampNumber(numerator / denominator, -0.3, 0.3);
+  const alpha = yBar - beta * xBar;
+  const residualStd = Math.sqrt(points.reduce((sum, point) => sum + (point.logPrice - (alpha + beta * point.year)) ** 2, 0) / n);
+  return {
+    beta,
+    alpha,
+    residualStd,
+    sample: n,
+    yearSpan: Math.max(...distinctYears) - Math.min(...distinctYears),
+    stepPctPerYear: Math.round((Math.exp(beta) - 1) * 1e3) / 10,
+    agingPctPerYear: Math.round((Math.exp(-beta) - 1) * 1e3) / 10
+  };
 }
 async function marketStats() {
   const store = await getStore();
@@ -49286,7 +49563,7 @@ async function dealerDesk() {
     }));
   }
   const marketByModel = /* @__PURE__ */ new Map();
-  const familyKeyOf = (model) => model.modelFamily !== model.make ? `${model.make}|${model.modelFamily}` : `${model.make}|${model.variant.split(/\s+/)[0]}`;
+  const familyKeyOf = familyKeyOfModel;
   const marketByFamily = /* @__PURE__ */ new Map();
   const now = Date.now();
   for (const model of modelRows) {
@@ -49310,6 +49587,16 @@ async function dealerDesk() {
       rows,
       demandSignal: medianDays == null ? null : medianDays <= 35 ? "fast" : medianDays <= 75 ? "balanced" : "slow"
     });
+  }
+  const ladderByModel = /* @__PURE__ */ new Map();
+  for (const [modelId, market] of marketByModel) {
+    const ladder = fitPriceLadder(fenceCompRows(market.rows));
+    if (ladder) ladderByModel.set(modelId, ladder);
+  }
+  const ladderByFamily = /* @__PURE__ */ new Map();
+  for (const [key, familyRows] of marketByFamily) {
+    const ladder = fitPriceLadder(fenceCompRows(familyRows));
+    if (ladder) ladderByFamily.set(key, ladder);
   }
   const activeCars = cars.filter((car) => !car.sold);
   const soldCars = cars.filter((car) => car.sold);
@@ -49457,6 +49744,11 @@ async function dealerDesk() {
       })).sort((a, b) => (a.price ?? 0) - (b.price ?? 0)),
       vsMarketPct,
       demandSignal: market?.demandSignal ?? null,
+      // Cheap outlook component: value change from aging one year down the
+      // price ladder — variant ladder preferred, family ladder as fallback
+      // (market drift not included — that needs the BaT regression, fetched
+      // lazily in the drill-down).
+      aging12moPct: model ? (ladderByModel.get(model.id) ?? (model ? ladderByFamily.get(familyKeyOf(model)) : void 0))?.agingPctPerYear ?? null : null,
       verdict
     };
   }).sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
@@ -49500,6 +49792,108 @@ async function dealerDesk() {
     },
     units,
     soldMix
+  };
+}
+async function deskOutlook(input) {
+  const store = await getStore();
+  const model = await store.findSupportedModelById(input.modelId);
+  if (!model) throw new Error("Unknown model");
+  const activeRows = await store.activeListings(5e3);
+  const marketRowsFor = (modelId) => activeRows.filter(
+    (listing) => listing.modelId === modelId && listing.price && listing.source !== "oneexotics" && !listing.sellerName?.toLowerCase().includes("one exotics")
+  );
+  const rows = marketRowsFor(model.id);
+  let ladder = fitPriceLadder(fenceCompRows(rows));
+  let ladderBasis = ladder ? "variant" : null;
+  if (!ladder) {
+    const modelRows = await store.allSupportedModels();
+    const familyKey = familyKeyOfModel(model);
+    const familyRows = modelRows.filter((row) => row.id !== model.id && familyKeyOfModel(row) === familyKey).flatMap((row) => marketRowsFor(row.id));
+    ladder = fitPriceLadder(fenceCompRows([...rows, ...familyRows]));
+    if (ladder) ladderBasis = "family";
+  }
+  let forecast = null;
+  let driftError = null;
+  try {
+    forecast = await buildVariantForecast(input.modelId);
+  } catch (error48) {
+    driftError = error48 instanceof Error ? error48.message : "BaT forecast unavailable";
+  }
+  const regression = forecast?.configured && forecast.matched ? forecast.regression : null;
+  if (!regression && !driftError) {
+    driftError = forecast && !forecast.configured ? "BaT not configured" : forecast && !forecast.matched ? forecast.error ?? "no BaT match" : "insufficient BaT data/confidence for a regression";
+  }
+  const anchor = regression?.projectionCurve[0]?.price ?? null;
+  const todayValue = ladder && input.year ? Math.round(Math.exp(ladder.alpha + ladder.beta * input.year)) : anchor;
+  const todayValueBasis = ladder && input.year ? "price ladder" : anchor != null ? "BaT trendline" : null;
+  const horizons = [6, 12, 24].map((monthsAhead) => {
+    const hYears = monthsAhead / 12;
+    const agingFactor = ladder ? Math.exp(-ladder.beta * hYears) : 1;
+    let driftFactor = 1;
+    let bearFactor = null;
+    let bullFactor = null;
+    if (regression && anchor) {
+      const curvePoint = regression.projectionCurve[Math.min(monthsAhead, regression.projectionCurve.length - 1)];
+      driftFactor = curvePoint ? curvePoint.price / anchor : 1;
+      const point = (months) => regression.projection.find((p) => p.monthsAhead === months) ?? null;
+      const p6 = point(6);
+      const p12 = point(12);
+      const p36 = point(36);
+      if (monthsAhead === 6 && p6) {
+        bearFactor = p6.bear / anchor;
+        bullFactor = p6.bull / anchor;
+      } else if (monthsAhead === 12 && p12) {
+        bearFactor = p12.bear / anchor;
+        bullFactor = p12.bull / anchor;
+      } else if (p12 && p36) {
+        const t2 = (24 - 12) / (36 - 12);
+        bearFactor = Math.exp(Math.log(p12.bear / anchor) + t2 * (Math.log(p36.bear / anchor) - Math.log(p12.bear / anchor)));
+        bullFactor = Math.exp(Math.log(p12.bull / anchor) + t2 * (Math.log(p36.bull / anchor) - Math.log(p12.bull / anchor)));
+      }
+    } else if (ladder) {
+      const band = ladder.residualStd * Math.sqrt(hYears);
+      bearFactor = Math.exp(-band);
+      bullFactor = Math.exp(band);
+    }
+    const base = todayValue != null ? Math.round(todayValue * agingFactor * driftFactor) : null;
+    return {
+      monthsAhead,
+      base,
+      // bearFactor/bullFactor are drift-inclusive in both branches above.
+      bear: base != null && bearFactor != null ? Math.round(todayValue * agingFactor * bearFactor) : null,
+      bull: base != null && bullFactor != null ? Math.round(todayValue * agingFactor * bullFactor) : null
+    };
+  });
+  const confidence = regression && forecast?.matched ? forecast.confidence : ladder && ladder.sample >= 10 && ladder.yearSpan >= 4 ? "indicative" : "thin";
+  return {
+    modelId: model.id,
+    variant: model.variant,
+    year: input.year ?? null,
+    computedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    todayValue,
+    todayValueBasis,
+    ladder: ladder ? {
+      basis: ladderBasis,
+      sample: ladder.sample,
+      yearSpan: ladder.yearSpan,
+      stepPctPerYear: ladder.stepPctPerYear,
+      agingPctPerYear: ladder.agingPctPerYear
+    } : null,
+    drift: regression && forecast?.configured && forecast.matched ? {
+      annualizedPct: regression.annualizedPct,
+      shortTermPct: regression.shortTermPct,
+      longTermPct: regression.longTermPct,
+      confidence: forecast.confidence,
+      confidenceScore: forecast.confidenceScore,
+      baTModel: forecast.baTModel ?? null,
+      saleCount: forecast.saleCount ?? null,
+      spanStart: forecast.spanStart ?? null,
+      spanEnd: forecast.spanEnd ?? null
+    } : null,
+    driftError,
+    horizons,
+    confidence,
+    method: "Projected value = today's ladder value at this unit's model year \xD7 aging factor (exp(\u2212\u03B2\xB7h/12): its year slides down the variant's price ladder as time passes) \xD7 market drift factor (BaT dated-sales regression, mean-reversion damped between short- and long-term rates). Bear/bull: regression residual band when available, else the ladder's residual scatter. Not mileage- or spec-adjusted."
   };
 }
 
@@ -49794,243 +50188,6 @@ function ensureHighlineReady() {
   return prepareInflight;
 }
 
-// api/services/expertKnowledge.ts
-var EXPERT_RULES = [
-  {
-    id: "ex-0001",
-    author: "GM (example)",
-    createdAt: "2026-08-09",
-    status: "draft",
-    match: { make: "Porsche", variantIncludes: "GT3" },
-    effect: { kind: "signal", signal: "manual_premium" },
-    rationale: "Example rule: Touring/manual GT cars pull a premium over PDK that blended auction medians hide. Price them off the manual comps only.",
-    reviewAfter: "2026-11-09"
-  }
-];
-function matches(rule, model) {
-  const norm = (value) => (value ?? "").toLowerCase();
-  const { match: match2 } = rule;
-  if (match2.make && norm(match2.make) !== norm(model.make)) return false;
-  if (match2.modelFamily && norm(match2.modelFamily) !== norm(model.modelFamily)) return false;
-  if (match2.generation && norm(match2.generation) !== norm(model.generation)) return false;
-  if (match2.variantIncludes && !norm(model.variant).includes(norm(match2.variantIncludes))) return false;
-  return true;
-}
-var MAX_DRIFT_ADJUST_LOG = Math.log(1.1);
-function resolveExpertOverlay(model) {
-  const active = EXPERT_RULES.filter((rule) => rule.status === "active" && matches(rule, model));
-  if (!active.length) return null;
-  const overlay = { driftLogAdjust: 0, confidenceCap: null, signals: [], notes: [], applied: [] };
-  for (const rule of active) {
-    switch (rule.effect.kind) {
-      case "drift_adjust": {
-        const logDelta = rule.effect.annualizedBps / 1e4;
-        overlay.driftLogAdjust += logDelta;
-        overlay.applied.push({
-          id: rule.id,
-          author: rule.author,
-          effectLabel: `drift ${rule.effect.annualizedBps >= 0 ? "+" : ""}${(rule.effect.annualizedBps / 100).toFixed(1)}%/yr`,
-          rationale: rule.rationale
-        });
-        break;
-      }
-      case "confidence_cap": {
-        overlay.confidenceCap = Math.min(overlay.confidenceCap ?? 98, rule.effect.maxScore);
-        overlay.applied.push({
-          id: rule.id,
-          author: rule.author,
-          effectLabel: `confidence capped at ${rule.effect.maxScore}`,
-          rationale: rule.rationale
-        });
-        break;
-      }
-      case "signal": {
-        if (!overlay.signals.includes(rule.effect.signal)) overlay.signals.push(rule.effect.signal);
-        overlay.applied.push({ id: rule.id, author: rule.author, effectLabel: rule.effect.signal.replace(/_/g, " "), rationale: rule.rationale });
-        break;
-      }
-      case "note": {
-        overlay.notes.push({ author: rule.author, createdAt: rule.createdAt, text: rule.rationale });
-        break;
-      }
-    }
-  }
-  overlay.driftLogAdjust = Math.max(-MAX_DRIFT_ADJUST_LOG, Math.min(MAX_DRIFT_ADJUST_LOG, overlay.driftLogAdjust));
-  return overlay;
-}
-
-// api/services/forecast.ts
-var DAY_MS = 864e5;
-var TAU_DAYS = 540;
-var MAX_ANNUAL_LOG_RATE = 0.28;
-var WINDOWS = [
-  { label: "6mo", days: 182 },
-  { label: "1yr", days: 365 },
-  { label: "3yr", days: 1095 },
-  { label: "all", days: Number.POSITIVE_INFINITY }
-];
-function medianOf(values) {
-  const sorted = values.filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
-  if (!sorted.length) return null;
-  return sorted[Math.floor((sorted.length - 1) * 0.5)];
-}
-function clamp2(value, lo, hi) {
-  return Math.max(lo, Math.min(hi, value));
-}
-function fitLogLinear(points) {
-  const n = points.length;
-  if (n < 4) return null;
-  const t0 = points[0].ts;
-  const xs = points.map((point) => (point.ts - t0) / DAY_MS);
-  const ys = points.map((point) => Math.log(point.price));
-  const xBar = xs.reduce((sum, x) => sum + x, 0) / n;
-  const yBar = ys.reduce((sum, y) => sum + y, 0) / n;
-  let numerator = 0;
-  let denominator = 0;
-  for (let index2 = 0; index2 < n; index2 += 1) {
-    numerator += (xs[index2] - xBar) * (ys[index2] - yBar);
-    denominator += (xs[index2] - xBar) ** 2;
-  }
-  if (denominator <= 0) return null;
-  const slope = numerator / denominator;
-  const intercept = yBar - slope * xBar;
-  const residualStd = Math.sqrt(ys.reduce((sum, y, index2) => sum + (y - (intercept + slope * xs[index2])) ** 2, 0) / n);
-  return { slope, intercept, residualStd, count: n };
-}
-var annualizedPctOf = (slope) => Math.round((Math.exp(clamp2(slope * 365, -MAX_ANNUAL_LOG_RATE, MAX_ANNUAL_LOG_RATE)) - 1) * 1e3) / 10;
-async function buildVariantForecast(modelId) {
-  const store = await getStore();
-  const model = await store.findSupportedModelById(modelId);
-  if (!model) throw new Error("Unknown model");
-  const history = await fetchBatSalesHistory(model.make, model.modelFamily, {
-    searchModel: model.searchModel,
-    variant: model.variant,
-    maxPages: 4
-  });
-  if (!history.configured) return { configured: false };
-  if (!history.matched) {
-    return { configured: true, matched: false, baTModel: history.baTModel ?? null, error: history.error ?? "No dated sales" };
-  }
-  const usable = history.sales.filter((sale) => sale.price > 1e4);
-  const sold = usable.filter((sale) => sale.result === "sold");
-  const n = sold.length;
-  const spanDays = n >= 2 ? (sold[n - 1].ts - sold[0].ts) / DAY_MS : 0;
-  const lastSaleTs = sold[n - 1]?.ts ?? 0;
-  const buckets = /* @__PURE__ */ new Map();
-  for (const sale of sold) {
-    const date6 = new Date(sale.ts);
-    const key = `${date6.getUTCFullYear()}-Q${Math.floor(date6.getUTCMonth() / 3) + 1}`;
-    const bucket = buckets.get(key) ?? { prices: [], tsSum: 0 };
-    bucket.prices.push(sale.price);
-    bucket.tsSum += sale.ts;
-    buckets.set(key, bucket);
-  }
-  const quarterly = [...buckets.entries()].map(([quarter, bucket]) => ({
-    quarter,
-    median: medianOf(bucket.prices),
-    count: bucket.prices.length,
-    ts: Math.round(bucket.tsSum / bucket.prices.length)
-  })).sort((a, b) => a.quarter.localeCompare(b.quarter));
-  const windowFits = WINDOWS.map((window2) => {
-    const points = window2.days === Number.POSITIVE_INFINITY ? sold : sold.filter((sale) => sale.ts >= lastSaleTs - window2.days * DAY_MS);
-    const fit = fitLogLinear(points);
-    return {
-      label: window2.label,
-      days: window2.days === Number.POSITIVE_INFINITY ? null : window2.days,
-      count: points.length,
-      annualizedPct: fit ? annualizedPctOf(fit.slope) : null,
-      fit
-    };
-  });
-  const fitted = windowFits.filter((window2) => window2.fit !== null);
-  const allTime = windowFits[windowFits.length - 1];
-  let agreement = null;
-  if (allTime.fit && fitted.length >= 2) {
-    const referenceSign = Math.sign(allTime.fit.slope);
-    const agreeing = fitted.filter((window2) => Math.abs(window2.fit.slope) < 1e-6 || Math.sign(window2.fit.slope) === referenceSign).length;
-    agreement = { agreeing, total: fitted.length };
-  }
-  const residualStdAll = allTime.fit?.residualStd ?? 0.6;
-  const daysSinceLastSale = lastSaleTs ? (Date.now() - lastSaleTs) / DAY_MS : Number.POSITIVE_INFINITY;
-  const soldShare = usable.length ? n / usable.length : 0;
-  let confidenceScore = 0;
-  confidenceScore += Math.min(30, Math.round(30 * Math.min(1, n / 60)));
-  confidenceScore += Math.min(20, Math.round(20 * Math.min(1, spanDays / 1825)));
-  if (agreement) confidenceScore += Math.round(20 * agreement.agreeing / agreement.total);
-  confidenceScore += Math.round(15 * clamp2((0.6 - residualStdAll) / 0.45, 0, 1));
-  confidenceScore += daysSinceLastSale <= 45 ? 8 : daysSinceLastSale <= 120 ? 5 : daysSinceLastSale <= 240 ? 2 : 0;
-  confidenceScore += Math.round(5 * clamp2((soldShare - 0.4) / 0.4, 0, 1));
-  const overlay = resolveExpertOverlay(model);
-  if (overlay?.confidenceCap != null) confidenceScore = Math.min(confidenceScore, overlay.confidenceCap);
-  confidenceScore = Math.min(98, confidenceScore);
-  const confidence = confidenceScore >= 70 ? "solid" : confidenceScore >= 40 ? "indicative" : "thin";
-  let regression = null;
-  if (confidence !== "thin" && allTime.fit && n >= 12 && spanDays >= 270) {
-    const annualLogRateOf = (fit) => clamp2(fit.slope * 365, -MAX_ANNUAL_LOG_RATE, MAX_ANNUAL_LOG_RATE);
-    const longRaw = annualLogRateOf(allTime.fit);
-    const nearWindows = [windowFits[0], windowFits[1]].filter((window2) => window2.fit !== null);
-    const shortRaw = nearWindows.length > 0 ? nearWindows.reduce((sum, window2) => sum + annualLogRateOf(window2.fit) * window2.fit.count, 0) / nearWindows.reduce((sum, window2) => sum + window2.fit.count, 0) : windowFits[2].fit ? annualLogRateOf(windowFits[2].fit) : longRaw;
-    const driftAdjust = overlay?.driftLogAdjust ?? 0;
-    const shortRate = clamp2(shortRaw + driftAdjust, -MAX_ANNUAL_LOG_RATE, MAX_ANNUAL_LOG_RATE);
-    const longRate = clamp2(longRaw + driftAdjust, -MAX_ANNUAL_LOG_RATE, MAX_ANNUAL_LOG_RATE);
-    const t0 = sold[0].ts;
-    const tNowDays = (Date.now() - t0) / DAY_MS;
-    const anchor = Math.exp(allTime.fit.intercept + allTime.fit.slope * tNowDays);
-    const cumLog = (hDays) => longRate * (hDays / 365) + (shortRate - longRate) * (TAU_DAYS / 365) * (1 - Math.exp(-hDays / TAU_DAYS));
-    const project = (hDays) => anchor * Math.exp(cumLog(hDays));
-    const sigma = (hDays) => allTime.fit.residualStd * Math.sqrt(hDays / 365);
-    const projectionCurve = Array.from({ length: 37 }, (_, month) => {
-      const hDays = month * 30.4;
-      return { ts: Math.round(Date.now() + hDays * DAY_MS), price: Math.round(project(hDays)) };
-    });
-    regression = {
-      annualizedPct: Math.round((Math.exp(cumLog(365)) - 1) * 1e3) / 10,
-      shortTermPct: Math.round((Math.exp(shortRate) - 1) * 1e3) / 10,
-      longTermPct: Math.round((Math.exp(longRate) - 1) * 1e3) / 10,
-      trendLine: [
-        { ts: t0, price: Math.round(Math.exp(allTime.fit.intercept)) },
-        { ts: Math.round(Date.now()), price: Math.round(anchor) }
-      ],
-      projectionCurve,
-      projection: [182, 365, 1095, 1825].map((daysAhead) => {
-        const base = project(daysAhead);
-        const band = sigma(daysAhead);
-        return {
-          monthsAhead: Math.round(daysAhead / 30.4),
-          ts: Math.round(Date.now() + daysAhead * DAY_MS),
-          base: Math.round(base),
-          bear: Math.round(base * Math.exp(-band)),
-          bull: Math.round(base * Math.exp(+band))
-        };
-      })
-    };
-  }
-  return {
-    configured: true,
-    matched: true,
-    baTModel: history.baTModel ?? null,
-    saleCount: n,
-    bidToCount: usable.length - n,
-    spanStart: sold[0]?.date ?? null,
-    spanEnd: sold[n - 1]?.date ?? null,
-    allTimeMedian: medianOf(sold.map((sale) => sale.price)),
-    quarterly,
-    windows: windowFits.map((window2) => ({ label: window2.label, count: window2.count, annualizedPct: window2.annualizedPct })),
-    windowAgreement: agreement,
-    regression,
-    confidence,
-    confidenceScore,
-    expert: overlay ? {
-      applied: overlay.applied,
-      signals: overlay.signals,
-      notes: overlay.notes
-    } : null,
-    pagesFetched: history.pagesFetched,
-    source: "Bring a Trailer via parse.bot",
-    points: usable.map((sale) => ({ ts: sale.ts, price: sale.price, result: sale.result }))
-  };
-}
-
 // api/services/nhtsa.ts
 function clean(value) {
   return value && value !== "Not Applicable" ? value : void 0;
@@ -50309,6 +50466,11 @@ var highlineRouter = createRouter({
   desk: publicQuery.query(async () => {
     await ensureHighlineReady();
     return dealerDesk();
+  }),
+  /** Per-unit price outlook: aging curve + BaT market drift (lazy — spends parse.bot credits). */
+  deskOutlook: publicQuery.input(external_exports.object({ modelId: external_exports.number().int().positive(), year: external_exports.number().int().min(1950).max(2100).optional() })).query(async ({ input }) => {
+    await ensureHighlineReady();
+    return deskOutlook(input);
   })
 });
 

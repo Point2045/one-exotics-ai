@@ -3,6 +3,7 @@ import { parseBotConfigured } from "../providers/batComps";
 import { marketCheckConfigured } from "../providers/marketcheck";
 import { fetchDealerInventory } from "../providers/oneExotics";
 import { latestIngestionRun, refreshListingsFromAutoDev } from "../services/ingestion";
+import { buildVariantForecast } from "../services/forecast";
 import { matchSupportedModel } from "../services/matching";
 import { getStore } from "../services/store";
 
@@ -163,6 +164,80 @@ function percentileOf(values: number[], fraction: number) {
   const upper = Math.ceil(position);
   if (lower === upper) return sorted[lower];
   return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
+}
+
+const clampNumber = (value: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, value));
+
+/**
+ * Family grouping key (e.g. all 488s, all Huracáns). Several makes set
+ * modelFamily = make (Ferrari, Lamborghini, McLaren, Rolls-Royce, Aston
+ * Martin) — grouping by that raw family would lump a 488 in with 812s — so
+ * for those we key on the variant's leading token ("488 GTB" → "488",
+ * "Huracán Performante" → "Huracán").
+ */
+function familyKeyOfModel(model: { make: string; modelFamily: string; variant: string }) {
+  return model.modelFamily !== model.make ? `${model.make}|${model.modelFamily}` : `${model.make}|${model.variant.split(/\s+/)[0]}`;
+}
+
+/**
+ * Price ladder: OLS of log(price) on model year across a comp set. The slope
+ * β is the cross-sectional year-over-year price step. For a specific vehicle
+ * the AGING effect is the mirror image: in 12 months its model year is valued
+ * where the year-older rung sits today, i.e. ×exp(−β). (For normal variants
+ * β>0 — newer costs more — so aging costs value; for appreciating classics
+ * β<0 and aging adds it.)
+ */
+export type PriceLadder = {
+  beta: number;
+  alpha: number;
+  residualStd: number;
+  sample: number;
+  yearSpan: number;
+  /** Cross-sectional price step per model year, e.g. +7.2 means each newer year asks ~7.2% more. */
+  stepPctPerYear: number;
+  /** Value change a specific vehicle experiences from aging one year: (exp(−β)−1)×100. */
+  agingPctPerYear: number;
+};
+
+/** Tukey 1.5×IQR price fence — drops miscategorized/mispriced rows before fitting. */
+function fenceCompRows<T extends { price?: number | null }>(rows: T[]): T[] {
+  const prices = rows.map((row) => row.price!).sort((a, b) => a - b);
+  if (prices.length < 6) return rows;
+  const q1 = percentileOf(prices, 0.25)!; // non-empty (length >= 6 guard)
+  const q3 = percentileOf(prices, 0.75)!;
+  const iqr = q3 - q1;
+  const kept = rows.filter((row) => row.price! >= q1 - 1.5 * iqr && row.price! <= q3 + 1.5 * iqr);
+  return kept.length >= 3 ? kept : rows;
+}
+
+function fitPriceLadder(rows: Array<{ year?: number | null; price?: number | null }>): PriceLadder | null {
+  const points = rows
+    .filter((row) => row.year && row.price)
+    .map((row) => ({ year: row.year!, logPrice: Math.log(row.price!) }));
+  const distinctYears = new Set(points.map((point) => point.year));
+  if (points.length < 6 || distinctYears.size < 4) return null;
+  const n = points.length;
+  const xBar = points.reduce((sum, point) => sum + point.year, 0) / n;
+  const yBar = points.reduce((sum, point) => sum + point.logPrice, 0) / n;
+  let numerator = 0;
+  let denominator = 0;
+  for (const point of points) {
+    numerator += (point.year - xBar) * (point.logPrice - yBar);
+    denominator += (point.year - xBar) ** 2;
+  }
+  if (denominator <= 0) return null;
+  const beta = clampNumber(numerator / denominator, -0.3, 0.3); // ±30% log/yr sanity clamp
+  const alpha = yBar - beta * xBar;
+  const residualStd = Math.sqrt(points.reduce((sum, point) => sum + (point.logPrice - (alpha + beta * point.year)) ** 2, 0) / n);
+  return {
+    beta,
+    alpha,
+    residualStd,
+    sample: n,
+    yearSpan: Math.max(...distinctYears) - Math.min(...distinctYears),
+    stepPctPerYear: Math.round((Math.exp(beta) - 1) * 1000) / 10,
+    agingPctPerYear: Math.round((Math.exp(-beta) - 1) * 1000) / 10,
+  };
 }
 
 export async function marketStats() {
@@ -494,12 +569,7 @@ export async function dealerDesk() {
   // 720S Spider, Ghost…) can have zero comps. Benchmarking against sibling
   // variants is directionally useful and beats "No market data yet"; the
   // "family" basis label keeps the weaker benchmark visible in the UI.
-  // Several makes set modelFamily = make (Ferrari, Lamborghini, McLaren,
-  // Rolls-Royce, Aston Martin) — grouping by that raw family would lump a
-  // 488 in with 812s — so for those we key on the variant's leading token
-  // ("488 GTB" → "488", "Huracán Performante" → "Huracán").
-  const familyKeyOf = (model: (typeof modelRows)[number]) =>
-    model.modelFamily !== model.make ? `${model.make}|${model.modelFamily}` : `${model.make}|${model.variant.split(/\s+/)[0]}`;
+  const familyKeyOf = familyKeyOfModel;
   const marketByFamily = new Map<string, CompRow[]>();
   const now = Date.now();
   for (const model of modelRows) {
@@ -532,6 +602,20 @@ export async function dealerDesk() {
     });
   }
 
+  // Price ladder per variant — powers the cheap aging-curve outlook shown in
+  // the desk table (the BaT-drift component is fetched lazily per unit in the
+  // drill-down to protect parse.bot credits). Thin variants fall back to the
+  // family ladder, same philosophy as the benchmark ladder.
+  const ladderByModel = new Map<number, PriceLadder>();
+  for (const [modelId, market] of marketByModel) {
+    const ladder = fitPriceLadder(fenceCompRows(market.rows));
+    if (ladder) ladderByModel.set(modelId, ladder);
+  }
+  const ladderByFamily = new Map<string, PriceLadder>();
+  for (const [key, familyRows] of marketByFamily) {
+    const ladder = fitPriceLadder(fenceCompRows(familyRows));
+    if (ladder) ladderByFamily.set(key, ladder);
+  }
 
   const activeCars = cars.filter((car) => !car.sold);
   const soldCars = cars.filter((car) => car.sold);
@@ -704,6 +788,13 @@ export async function dealerDesk() {
           .sort((a, b) => (a.price ?? 0) - (b.price ?? 0)),
         vsMarketPct,
         demandSignal: market?.demandSignal ?? null,
+        // Cheap outlook component: value change from aging one year down the
+        // price ladder — variant ladder preferred, family ladder as fallback
+        // (market drift not included — that needs the BaT regression, fetched
+        // lazily in the drill-down).
+        aging12moPct: model
+          ? (ladderByModel.get(model.id) ?? (model ? ladderByFamily.get(familyKeyOf(model)) : undefined))?.agingPctPerYear ?? null
+          : null,
         verdict,
       };
     })
@@ -758,5 +849,162 @@ export async function dealerDesk() {
     },
     units,
     soldMix,
+  };
+}
+
+/**
+ * Price outlook for one desk unit: where this vehicle's market value is
+ * likely headed, from two auditable components —
+ *
+ *   1. Aging curve: the variant's price ladder across model years (live
+ *      comps, outlier-fenced). A vehicle's value at horizon h slides down
+ *      the ladder by exp(−β·h/12) as its model year becomes relatively older.
+ *   2. Market drift: the BaT dated-sales regression (multi-window, mean-
+ *      reversion damped, confidence-gated) — fetched lazily here rather than
+ *      in the desk table because each pull spends parse.bot credits.
+ *
+ * projected(h) = todayValue(ladder at the unit's year) × aging × drift, with
+ * bear/bull from the regression band when available, else the ladder's
+ * residual scatter. Everything is returned decomposed so the UI can show
+ * exactly how the number was built.
+ */
+export async function deskOutlook(input: { modelId: number; year?: number }) {
+  const store = await getStore();
+  const model = await store.findSupportedModelById(input.modelId);
+  if (!model) throw new Error("Unknown model");
+
+  const activeRows = await store.activeListings(5000);
+  const marketRowsFor = (modelId: number) =>
+    activeRows.filter(
+      (listing) =>
+        listing.modelId === modelId &&
+        listing.price &&
+        listing.source !== "oneexotics" &&
+        !listing.sellerName?.toLowerCase().includes("one exotics"),
+    );
+  const rows = marketRowsFor(model.id);
+  // Same Tukey fence as the desk benchmarks — ladders are slope-sensitive to
+  // miscategorized outliers.
+  let ladder = fitPriceLadder(fenceCompRows(rows));
+  let ladderBasis: "variant" | "family" | null = ladder ? "variant" : null;
+  if (!ladder) {
+    // Thin variant → family ladder (sibling variants, e.g. 812 Superfast
+    // comps inform an 812 GTS aging curve).
+    const modelRows = await store.allSupportedModels();
+    const familyKey = familyKeyOfModel(model);
+    const familyRows = modelRows.filter((row) => row.id !== model.id && familyKeyOfModel(row) === familyKey).flatMap((row) => marketRowsFor(row.id));
+    ladder = fitPriceLadder(fenceCompRows([...rows, ...familyRows]));
+    if (ladder) ladderBasis = "family";
+  }
+
+  // Market drift from BaT dated sales (per-instance + parse.bot caching bound
+  // the credit spend).
+  let forecast: Awaited<ReturnType<typeof buildVariantForecast>> | null = null;
+  let driftError: string | null = null;
+  try {
+    forecast = await buildVariantForecast(input.modelId);
+  } catch (error) {
+    driftError = error instanceof Error ? error.message : "BaT forecast unavailable";
+  }
+  const regression = forecast?.configured && forecast.matched ? forecast.regression : null;
+  if (!regression && !driftError) {
+    driftError =
+      forecast && !forecast.configured
+        ? "BaT not configured"
+        : forecast && !forecast.matched
+          ? (forecast.error ?? "no BaT match")
+          : "insufficient BaT data/confidence for a regression";
+  }
+
+  // Today's value anchor: the price ladder at the unit's model year when
+  // available; otherwise the BaT trendline's current value (a dated-sales
+  // market estimate), so dollar projections still render ladder-less.
+  const anchor = regression?.projectionCurve[0]?.price ?? null;
+  const todayValue = ladder && input.year ? Math.round(Math.exp(ladder.alpha + ladder.beta * input.year)) : anchor;
+  const todayValueBasis = ladder && input.year ? "price ladder" : anchor != null ? "BaT trendline" : null;
+
+  const horizons = [6, 12, 24].map((monthsAhead) => {
+    const hYears = monthsAhead / 12;
+    const agingFactor = ladder ? Math.exp(-ladder.beta * hYears) : 1;
+    let driftFactor = 1;
+    let bearFactor: number | null = null;
+    let bullFactor: number | null = null;
+    if (regression && anchor) {
+      const curvePoint = regression.projectionCurve[Math.min(monthsAhead, regression.projectionCurve.length - 1)];
+      driftFactor = curvePoint ? curvePoint.price / anchor : 1;
+      // Bear/bull at 6/12mo come straight from the engine's scenario points;
+      // 24mo interpolates in log space between the 12mo and 36mo points.
+      const point = (months: number) => regression.projection.find((p) => p.monthsAhead === months) ?? null;
+      const p6 = point(6);
+      const p12 = point(12);
+      const p36 = point(36);
+      if (monthsAhead === 6 && p6) {
+        bearFactor = p6.bear / anchor;
+        bullFactor = p6.bull / anchor;
+      } else if (monthsAhead === 12 && p12) {
+        bearFactor = p12.bear / anchor;
+        bullFactor = p12.bull / anchor;
+      } else if (p12 && p36) {
+        const t = (24 - 12) / (36 - 12);
+        bearFactor = Math.exp(Math.log(p12.bear / anchor) + t * (Math.log(p36.bear / anchor) - Math.log(p12.bear / anchor)));
+        bullFactor = Math.exp(Math.log(p12.bull / anchor) + t * (Math.log(p36.bull / anchor) - Math.log(p12.bull / anchor)));
+      }
+    } else if (ladder) {
+      // No drift regression: band from the ladder's residual scatter.
+      const band = ladder.residualStd * Math.sqrt(hYears);
+      bearFactor = Math.exp(-band);
+      bullFactor = Math.exp(band);
+    }
+    const base = todayValue != null ? Math.round(todayValue * agingFactor * driftFactor) : null;
+    return {
+      monthsAhead,
+      base,
+      // bearFactor/bullFactor are drift-inclusive in both branches above.
+      bear: base != null && bearFactor != null ? Math.round(todayValue! * agingFactor * bearFactor) : null,
+      bull: base != null && bullFactor != null ? Math.round(todayValue! * agingFactor * bullFactor) : null,
+    };
+  });
+
+  const confidence: "solid" | "indicative" | "thin" =
+    regression && forecast?.matched ? forecast.confidence : ladder && ladder.sample >= 10 && ladder.yearSpan >= 4 ? "indicative" : "thin";
+
+  return {
+    modelId: model.id,
+    variant: model.variant,
+    year: input.year ?? null,
+    computedAt: new Date().toISOString(),
+    todayValue,
+    todayValueBasis,
+    ladder: ladder
+      ? {
+          basis: ladderBasis,
+          sample: ladder.sample,
+          yearSpan: ladder.yearSpan,
+          stepPctPerYear: ladder.stepPctPerYear,
+          agingPctPerYear: ladder.agingPctPerYear,
+        }
+      : null,
+    drift:
+      regression && forecast?.configured && forecast.matched
+        ? {
+            annualizedPct: regression.annualizedPct,
+            shortTermPct: regression.shortTermPct,
+            longTermPct: regression.longTermPct,
+            confidence: forecast.confidence,
+            confidenceScore: forecast.confidenceScore,
+            baTModel: forecast.baTModel ?? null,
+            saleCount: forecast.saleCount ?? null,
+            spanStart: forecast.spanStart ?? null,
+            spanEnd: forecast.spanEnd ?? null,
+          }
+        : null,
+    driftError,
+    horizons,
+    confidence,
+    method:
+      "Projected value = today's ladder value at this unit's model year × aging factor (exp(−β·h/12): its year " +
+      "slides down the variant's price ladder as time passes) × market drift factor (BaT dated-sales regression, " +
+      "mean-reversion damped between short- and long-term rates). Bear/bull: regression residual band when " +
+      "available, else the ladder's residual scatter. Not mileage- or spec-adjusted.",
   };
 }

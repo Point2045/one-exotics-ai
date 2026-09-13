@@ -214,11 +214,15 @@ export async function fetchBatComps(
   const windowYears = opts.windowYears ?? 1;
   const includeResults = opts.includeResults ?? true;
   const variantFirstWord = opts.variant?.split(/\s+/)[0];
+  // Most specific first: a bare modelFamily candidate ("911") would otherwise
+  // match the FIRST 911-anything in BaT's directory (a GT3 RS once resolved
+  // to "911 Carrera 1974-1977"). Try the full variant, then its first word,
+  // then the generic family.
   const candidates = [
-    modelFamily.toLowerCase() !== make.toLowerCase() ? modelFamily : undefined,
-    variantFirstWord,
-    opts.searchModel ?? undefined,
     opts.variant,
+    variantFirstWord,
+    modelFamily.toLowerCase() !== make.toLowerCase() ? modelFamily : undefined,
+    opts.searchModel ?? undefined,
   ].filter((candidate): candidate is string => Boolean(candidate));
 
   const { makeSlug, modelSlug } = await resolveSlugs(make, candidates);
@@ -311,11 +315,12 @@ export async function fetchBatSalesHistory(
 
   const maxPages = Math.max(1, Math.min(opts.maxPages ?? 4, 6));
   const variantFirstWord = opts.variant?.split(/\s+/)[0];
+  // Most specific first — see fetchBatComps for why ordering matters.
   const candidates = [
-    modelFamily.toLowerCase() !== make.toLowerCase() ? modelFamily : undefined,
-    variantFirstWord,
-    opts.searchModel ?? undefined,
     opts.variant,
+    variantFirstWord,
+    modelFamily.toLowerCase() !== make.toLowerCase() ? modelFamily : undefined,
+    opts.searchModel ?? undefined,
   ].filter((candidate): candidate is string => Boolean(candidate));
 
   const { makeSlug, modelSlug } = await resolveSlugs(make, candidates);

@@ -44,6 +44,110 @@ function DemandChip({ signal }: { signal: 'fast' | 'balanced' | 'slow' | null })
 
 type DeskUnit = NonNullable<ReturnType<typeof trpc.highline.desk.useQuery>['data']>['units'][number]
 
+const CONFIDENCE_TONE: Record<string, string> = {
+  solid: 'border-emerald-400/25 bg-emerald-400/10 text-emerald-300',
+  indicative: 'border-amber-300/25 bg-amber-300/10 text-amber-200',
+  thin: 'border-white/[0.08] bg-white/[0.04] text-slate-400',
+}
+
+/**
+ * Per-unit price outlook: today's ladder value projected forward by the
+ * aging curve and the BaT dated-sales drift regression. Fetched lazily on
+ * expand — the drift pull spends parse.bot credits.
+ */
+function UnitOutlook({ unit }: { unit: DeskUnit }) {
+  const outlook = trpc.highline.deskOutlook.useQuery(
+    { modelId: unit.modelId ?? 0, year: unit.year ?? undefined },
+    { enabled: unit.modelId != null, staleTime: 600_000 },
+  )
+  if (unit.modelId == null) return null
+  const data = outlook.data
+
+  return (
+    <div className="mt-2 border-t border-white/[0.06] px-5 py-5">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+        Price outlook · where this unit&apos;s market value is headed
+      </p>
+      {outlook.isLoading && <p className="mt-3 text-sm text-slate-500">Building the projection (price ladder + dated-sales regression)…</p>}
+      {outlook.error && <p className="mt-3 text-sm text-rose-300">Outlook unavailable: {outlook.error.message}</p>}
+      {data && (
+        <div className="mt-4 grid gap-6 lg:grid-cols-[360px_1fr]">
+          <div className="space-y-3 text-sm leading-6">
+            <p className="text-slate-300">
+              <span className="text-slate-500">Aging curve:</span>{' '}
+              {data.ladder ? (
+                <>
+                  <span className={data.ladder.agingPctPerYear >= 0 ? 'text-emerald-300' : 'text-rose-300'}>
+                    {data.ladder.agingPctPerYear >= 0 ? '+' : ''}{data.ladder.agingPctPerYear.toFixed(1)}%/yr
+                  </span>
+                  <span className="text-slate-500">
+                    {' '}(n={data.ladder.sample} comps, {data.ladder.yearSpan} model years
+                    {data.ladder.basis === 'family' ? ', sibling variants' : ''})
+                  </span>
+                </>
+              ) : (
+                <span className="text-slate-500">insufficient year spread in current comps</span>
+              )}
+            </p>
+            <p className="text-slate-300">
+              <span className="text-slate-500">Market drift (BaT dated sales):</span>{' '}
+              {data.drift ? (
+                <>
+                  <span className={data.drift.annualizedPct >= 0 ? 'text-emerald-300' : 'text-rose-300'}>
+                    {data.drift.annualizedPct >= 0 ? '+' : ''}{data.drift.annualizedPct.toFixed(1)}%/yr
+                  </span>
+                  <span className="text-slate-500">
+                    {' '}next 12mo · {data.drift.saleCount} sales {data.drift.spanStart}→{data.drift.spanEnd} · {data.drift.baTModel}
+                  </span>
+                  <span className={`ml-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium ${CONFIDENCE_TONE[data.drift.confidence]}`}>
+                    {data.drift.confidence} {data.drift.confidenceScore}/98
+                  </span>
+                </>
+              ) : (
+                <span className="text-amber-300/90">unavailable — {data.driftError ?? 'no regression'}; projection is aging-only</span>
+              )}
+            </p>
+            <p className="text-slate-300">
+              <span className="text-slate-500">Today&apos;s market value ({data.todayValueBasis ?? 'no anchor'}):</span>{' '}
+              <span className="font-semibold text-white">{money(data.todayValue)}</span>
+            </p>
+            <p className="text-[11px] leading-4 text-slate-600">{data.method}</p>
+          </div>
+          <div className="overflow-x-auto rounded-xl border border-white/[0.06]">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-white/[0.06] uppercase tracking-[0.14em] text-slate-500">
+                  <th className="px-3 py-2 font-medium">Horizon</th>
+                  <th className="px-3 py-2 font-medium">Projected value</th>
+                  <th className="px-3 py-2 font-medium">Bear – Bull</th>
+                  <th className="px-3 py-2 font-medium">Change vs today</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.horizons.map((horizon) => {
+                  const changePct = horizon.base != null && data.todayValue ? ((horizon.base - data.todayValue) / data.todayValue) * 100 : null
+                  return (
+                    <tr key={horizon.monthsAhead} className="border-b border-white/[0.04]">
+                      <td className="px-3 py-2 text-slate-400">+{horizon.monthsAhead} mo</td>
+                      <td className="px-3 py-2 font-semibold text-white">{money(horizon.base)}</td>
+                      <td className="px-3 py-2 text-slate-500">
+                        {horizon.bear != null && horizon.bull != null ? `${money(horizon.bear)} – ${money(horizon.bull)}` : '—'}
+                      </td>
+                      <td className={`px-3 py-2 ${changePct != null ? (changePct >= 0 ? 'text-emerald-300' : 'text-rose-300') : 'text-slate-600'}`}>
+                        {changePct != null ? `${changePct >= 0 ? '+' : ''}${changePct.toFixed(1)}%` : '—'}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const BASIS_LABEL: Record<string, string> = {
   'year cohort': '±1 model-year cohort',
   variant: 'variant-wide set',
@@ -58,30 +162,33 @@ const BASIS_LABEL: Record<string, string> = {
 function UnitEvidence({ unit }: { unit: DeskUnit }) {
   if (unit.verdict === 'untracked' || unit.marketMedian == null) {
     return (
-      <div className="px-5 py-5 text-sm text-slate-400">
-        {unit.warnings.length > 0 && (
-          <div className="mb-3 space-y-1.5">
-            {unit.warnings.map((warning) => (
-              <p key={warning} className="flex items-start gap-1.5 text-xs leading-5 text-amber-300/90">
-                <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-                {warning}
-              </p>
-            ))}
-          </div>
-        )}
-        {unit.matchedVariant ? (
-          <>
-            Matched to tracked variant <span className="font-semibold text-white">{unit.matchedVariant}</span>, but no
-            trustworthy market comps exist in the current snapshot. This resolves as market coverage accrues on the next
-            refreshes — a verdict is only rendered when the comp set is in the right segment and price range.
-          </>
-        ) : (
-          <>
-            This variant is not in the tracked set yet, so there is nothing to benchmark against. Ask the desk to add the
-            variant and comps will start accumulating from the next refresh.
-          </>
-        )}
-      </div>
+      <>
+        <div className="px-5 py-5 text-sm text-slate-400">
+          {unit.warnings.length > 0 && (
+            <div className="mb-3 space-y-1.5">
+              {unit.warnings.map((warning) => (
+                <p key={warning} className="flex items-start gap-1.5 text-xs leading-5 text-amber-300/90">
+                  <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                  {warning}
+                </p>
+              ))}
+            </div>
+          )}
+          {unit.matchedVariant ? (
+            <>
+              Matched to tracked variant <span className="font-semibold text-white">{unit.matchedVariant}</span>, but no
+              trustworthy market comps exist in the current snapshot. This resolves as market coverage accrues on the next
+              refreshes — a verdict is only rendered when the comp set is in the right segment and price range.
+            </>
+          ) : (
+            <>
+              This variant is not in the tracked set yet, so there is nothing to benchmark against. Ask the desk to add the
+              variant and comps will start accumulating from the next refresh.
+            </>
+          )}
+        </div>
+        <UnitOutlook unit={unit} />
+      </>
     )
   }
 
@@ -93,9 +200,10 @@ function UnitEvidence({ unit }: { unit: DeskUnit }) {
   const band = unit.verdict === 'rich' ? '≥ +5% → priced rich' : unit.verdict === 'opportunity' ? '≤ −5% → priced to move' : 'within ±5% → at market'
 
   return (
-    <div className="grid gap-6 px-5 py-5 lg:grid-cols-[340px_1fr]">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">How this number is built</p>
+    <>
+      <div className="grid gap-6 px-5 py-5 lg:grid-cols-[340px_1fr]">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">How this number is built</p>
         <ol className="mt-3 space-y-2.5 text-sm leading-6 text-slate-300">
           <li>
             <span className="text-slate-500">1 · Comp set:</span> {unit.marketSample} active market listing{unit.marketSample === 1 ? '' : 's'} for{' '}
@@ -189,7 +297,9 @@ function UnitEvidence({ unit }: { unit: DeskUnit }) {
           </tbody>
         </table>
       </div>
-    </div>
+      </div>
+      <UnitOutlook unit={unit} />
+    </>
   )
 }
 
@@ -299,6 +409,9 @@ function DeskBody() {
                 </th>
               ))}
               <th className="px-4 py-4 font-medium">Market median</th>
+              <th className="px-4 py-4 font-medium" title="Value change from aging one model year down the variant's price ladder — market drift included in the drill-down outlook">
+                12-mo outlook
+              </th>
               <th className="px-4 py-4 font-medium">Demand</th>
               <th className="px-5 py-4 font-medium">Verdict</th>
             </tr>
@@ -352,12 +465,26 @@ function DeskBody() {
                       <span className="ml-1.5 rounded bg-amber-400/10 px-1.5 py-0.5 text-[10px] text-amber-300/80" title="Benchmarked against sibling variants (e.g. 488 GTB comps for a 488 Spider) — thinner tape">family</span>
                     )}
                   </td>
-                  <td className="px-4 py-3.5"><DemandChip signal={unit.demandSignal} /></td>
+                  <td className="px-4 py-3.5">
+                  {unit.aging12moPct != null ? (
+                    <span
+                      className={`inline-flex items-center gap-1 ${unit.aging12moPct >= 0.5 ? 'text-emerald-300' : unit.aging12moPct <= -0.5 ? 'text-rose-300' : 'text-slate-400'}`}
+                      title="Aging curve: value change from this vehicle becoming one model-year older, per the variant's live price ladder. Full outlook with market drift in the drill-down."
+                    >
+                      {unit.aging12moPct >= 0.5 ? <TrendingUp className="h-3.5 w-3.5" /> : unit.aging12moPct <= -0.5 ? <TrendingDown className="h-3.5 w-3.5" /> : null}
+                      {unit.aging12moPct >= 0 ? '+' : ''}{unit.aging12moPct.toFixed(1)}%
+                      <span className="text-[10px] text-slate-600">aging</span>
+                    </span>
+                  ) : (
+                    <span className="text-slate-600">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-3.5"><DemandChip signal={unit.demandSignal} /></td>
                   <td className="px-5 py-3.5"><VerdictChip verdict={unit.verdict} pct={unit.vsMarketPct} matched={Boolean(unit.matchedVariant)} /></td>
                 </tr>
                 {expandedId === unit.id && (
                   <tr className="border-b border-white/[0.06] bg-white/[0.015]">
-                    <td colSpan={7}>
+                    <td colSpan={8}>
                       <UnitEvidence unit={unit} />
                     </td>
                   </tr>

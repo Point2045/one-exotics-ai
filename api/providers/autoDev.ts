@@ -144,6 +144,8 @@ function normalizeAutoDevListing(item: unknown): NormalizedListing | undefined {
 
 const MAX_PAGES_PER_SEARCH = 6;
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function fetchSearchPage(apiKey: string, search: (typeof HIGHLINE_SEARCHES)[number], page: number) {
   const params = new URLSearchParams({
     limit: String(STARTER_PAGE_LIMIT),
@@ -154,21 +156,29 @@ async function fetchSearchPage(apiKey: string, search: (typeof HIGHLINE_SEARCHES
   if (search.model) params.set("vehicle.model", search.model);
   if (search.trim) params.set("vehicle.trim", search.trim);
 
-  const response = await fetch(`${API_BASE}?${params.toString()}`, {
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      Accept: "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Auto.dev ${search.label} failed (${response.status}): ${body.slice(0, 240)}`);
+  // Auto.dev's Starter plan rate-limits bursts; a full refresh fires ~100
+  // page requests back to back. Retry 429s with backoff before failing the
+  // search — a failed search silently starves those variants of comps.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const response = await fetch(`${API_BASE}?${params.toString()}`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: "application/json",
+      },
+    });
+    if (response.status === 429 && attempt < 2) {
+      await sleep(1200 * (attempt + 1));
+      continue;
+    }
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Auto.dev ${search.label} failed (${response.status}): ${body.slice(0, 240)}`);
+    }
+    const payload = (await response.json()) as JsonObject;
+    const data = Array.isArray(payload.data) ? payload.data : [];
+    return data.map(normalizeAutoDevListing).filter((listing): listing is NormalizedListing => Boolean(listing));
   }
-
-  const payload = (await response.json()) as JsonObject;
-  const data = Array.isArray(payload.data) ? payload.data : [];
-  return data.map(normalizeAutoDevListing).filter((listing): listing is NormalizedListing => Boolean(listing));
+  throw new Error(`Auto.dev ${search.label} failed: unreachable retry state`);
 }
 
 export function autoDevConfigured() {
@@ -249,6 +259,9 @@ export async function fetchAutoDevListings(): Promise<ProviderFetchResult> {
     };
     try {
       for (let page = 1; page <= MAX_PAGES_PER_SEARCH; page += 1) {
+        // Gentle inter-page pacing keeps the full refresh under the Starter
+        // plan's burst limit (~100 requests total across all searches).
+        if (page > 1) await sleep(150);
         const rows = await fetchSearchPage(apiKey, search, page);
         for (const listing of rows) {
           const key = listing.vin ?? listing.externalId;

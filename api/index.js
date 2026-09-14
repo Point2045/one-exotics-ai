@@ -41266,6 +41266,7 @@ function normalizeAutoDevListing(item) {
   };
 }
 var MAX_PAGES_PER_SEARCH = 6;
+var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function fetchSearchPage(apiKey3, search, page) {
   const params = new URLSearchParams({
     limit: String(STARTER_PAGE_LIMIT),
@@ -41275,19 +41276,26 @@ async function fetchSearchPage(apiKey3, search, page) {
   });
   if (search.model) params.set("vehicle.model", search.model);
   if (search.trim) params.set("vehicle.trim", search.trim);
-  const response = await fetch(`${API_BASE3}?${params.toString()}`, {
-    headers: {
-      Authorization: `Bearer ${apiKey3}`,
-      Accept: "application/json"
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const response = await fetch(`${API_BASE3}?${params.toString()}`, {
+      headers: {
+        Authorization: `Bearer ${apiKey3}`,
+        Accept: "application/json"
+      }
+    });
+    if (response.status === 429 && attempt < 2) {
+      await sleep(1200 * (attempt + 1));
+      continue;
     }
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Auto.dev ${search.label} failed (${response.status}): ${body.slice(0, 240)}`);
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Auto.dev ${search.label} failed (${response.status}): ${body.slice(0, 240)}`);
+    }
+    const payload = await response.json();
+    const data = Array.isArray(payload.data) ? payload.data : [];
+    return data.map(normalizeAutoDevListing).filter((listing) => Boolean(listing));
   }
-  const payload = await response.json();
-  const data = Array.isArray(payload.data) ? payload.data : [];
-  return data.map(normalizeAutoDevListing).filter((listing) => Boolean(listing));
+  throw new Error(`Auto.dev ${search.label} failed: unreachable retry state`);
 }
 function autoDevConfigured() {
   return Boolean(process.env.AUTO_DEV_API_KEY?.trim());
@@ -41345,6 +41353,7 @@ async function fetchAutoDevListings() {
     };
     try {
       for (let page = 1; page <= MAX_PAGES_PER_SEARCH; page += 1) {
+        if (page > 1) await sleep(150);
         const rows = await fetchSearchPage(apiKey3, search, page);
         for (const listing of rows) {
           const key = listing.vin ?? listing.externalId;

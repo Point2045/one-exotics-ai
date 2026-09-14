@@ -41419,28 +41419,38 @@ function normalizeCar(item) {
     carfaxUrl: asString(record2.cfx)
   };
 }
+var sleep2 = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function fetchDealerInventory() {
   if (cache2 && Date.now() - cache2.at < CACHE_TTL_MS2) return cache2.cars;
-  const response = await fetch(DEALER_API, {
-    headers: {
-      Accept: "application/json, text/plain, */*",
-      "Accept-Language": "en-US,en;q=0.9",
-      Referer: "https://www.oneexoticstampa.com/inventory/",
-      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+  const headers = {
+    Accept: "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    Referer: "https://www.oneexoticstampa.com/inventory/",
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+  };
+  let lastStatus = 0;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (attempt > 0) await sleep2(800 * attempt + Math.floor(Math.random() * 400));
+    const response = await fetch(DEALER_API, { headers });
+    if (response.status === 403) {
+      lastStatus = 403;
+      continue;
     }
-  });
-  if (!response.ok) {
-    if (cache2) return cache2.cars;
-    throw new Error(`One Exotics feed HTTP ${response.status}`);
+    if (!response.ok) {
+      if (cache2) return cache2.cars;
+      throw new Error(`One Exotics feed HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    if (!Array.isArray(data)) {
+      if (cache2) return cache2.cars;
+      throw new Error("One Exotics feed returned a non-array payload");
+    }
+    const cars = data.map(normalizeCar).filter((car) => Boolean(car));
+    cache2 = { at: Date.now(), cars };
+    return cars;
   }
-  const data = await response.json();
-  if (!Array.isArray(data)) {
-    if (cache2) return cache2.cars;
-    throw new Error("One Exotics feed returned a non-array payload");
-  }
-  const cars = data.map(normalizeCar).filter((car) => Boolean(car));
-  cache2 = { at: Date.now(), cars };
-  return cars;
+  if (cache2) return cache2.cars;
+  throw new Error(`One Exotics feed HTTP ${lastStatus}`);
 }
 async function fetchDealerListings() {
   const cars = await fetchDealerInventory();

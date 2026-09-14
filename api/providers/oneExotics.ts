@@ -76,31 +76,44 @@ function normalizeCar(item: unknown): DealerCar | undefined {
   };
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /** Full dealer feed (active + sold), cached 1h. Falls back to stale cache on
- * WAF/rate-limit errors — their host intermittently 403s datacenter IPs. */
+ * WAF/rate-limit errors — their host intermittently 403s datacenter IPs. The
+ * block is flaky per-request, so 403s get a few jittered retries before we
+ * give up (observed: same instance, 3× 403 then success seconds later). */
 export async function fetchDealerInventory(): Promise<DealerCar[]> {
   if (cache && Date.now() - cache.at < CACHE_TTL_MS) return cache.cars;
-  const response = await fetch(DEALER_API, {
-    headers: {
-      Accept: "application/json, text/plain, */*",
-      "Accept-Language": "en-US,en;q=0.9",
-      Referer: "https://www.oneexoticstampa.com/inventory/",
-      "User-Agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-    },
-  });
-  if (!response.ok) {
-    if (cache) return cache.cars; // stale is better than empty
-    throw new Error(`One Exotics feed HTTP ${response.status}`);
+  const headers = {
+    Accept: "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    Referer: "https://www.oneexoticstampa.com/inventory/",
+    "User-Agent":
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  };
+  let lastStatus = 0;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (attempt > 0) await sleep(800 * attempt + Math.floor(Math.random() * 400));
+    const response = await fetch(DEALER_API, { headers });
+    if (response.status === 403) {
+      lastStatus = 403;
+      continue;
+    }
+    if (!response.ok) {
+      if (cache) return cache.cars; // stale is better than empty
+      throw new Error(`One Exotics feed HTTP ${response.status}`);
+    }
+    const data = (await response.json()) as unknown;
+    if (!Array.isArray(data)) {
+      if (cache) return cache.cars;
+      throw new Error("One Exotics feed returned a non-array payload");
+    }
+    const cars = data.map(normalizeCar).filter((car): car is DealerCar => Boolean(car));
+    cache = { at: Date.now(), cars };
+    return cars;
   }
-  const data = (await response.json()) as unknown;
-  if (!Array.isArray(data)) {
-    if (cache) return cache.cars;
-    throw new Error("One Exotics feed returned a non-array payload");
-  }
-  const cars = data.map(normalizeCar).filter((car): car is DealerCar => Boolean(car));
-  cache = { at: Date.now(), cars };
-  return cars;
+  if (cache) return cache.cars;
+  throw new Error(`One Exotics feed HTTP ${lastStatus}`);
 }
 
 /** Dealer units as NormalizedListings so they flow through the store/velocity pipeline like any other source. */
